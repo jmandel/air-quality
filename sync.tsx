@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Chart } from "chart.js/auto";
+import annotationPlugin from "chartjs-plugin-annotation";
 import "chartjs-adapter-date-fns";
+import { getSensorMetadata, getCurrentZone, getZoneColor, formatValue } from "./sensor-utils";
+
+// Register annotation plugin
+Chart.register(annotationPlugin);
 
 const API_BASE = `${window.location.origin}/api`;
 
@@ -21,43 +26,94 @@ function ChartTile({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<Chart | null>(null);
+  const [showInfo, setShowInfo] = useState(false);
 
-  const prettyName = sensorId
-    .replace(/^sensor-/, "")
-    .replace(/_weight_concentration$/, "")
-    .replace(/__/g, " ")
-    .replace(/_/g, " ")
-    .replace(/\bco2\b/i, "CO₂")
-    .replace(/\bpm\b/i, "PM")
-    .replace(/\bvoc\b/i, "VOC")
-    .replace(/\bnox\b/i, "NOx")
-    .trim();
+  // Get sensor metadata from registry
+  const metadata = useMemo(() => getSensorMetadata(sensorId), [sensorId]);
 
   const filteredData = useMemo(() => data.filter((p) => p.x >= sinceMs), [data, sinceMs]);
 
+  const currentValue = latest?.value;
+  const currentZone = useMemo(
+    () => (currentValue !== undefined && !isNaN(currentValue) ? getCurrentZone(currentValue, metadata) : null),
+    [currentValue, metadata]
+  );
+
+  // Use zone color if available, otherwise use hash-based color
   const color = useMemo(() => {
+    if (currentZone) {
+      const baseColor = getZoneColor(currentZone.color);
+      // Make the color more vibrant/saturated for better visibility
+      return baseColor;
+    }
     let h = 0;
     for (let i = 0; i < sensorId.length; i++) h = (h * 33 + sensorId.charCodeAt(i)) % 360;
-    return `hsl(${h} 70% 55%)`;
-  }, [sensorId]);
+    return `hsl(${h} 85% 60%)`; // Increased saturation and lightness
+  }, [sensorId, currentZone]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
     const ctx = canvasRef.current.getContext("2d")!;
+
+    // Build zone annotations (background bands)
+    const zoneAnnotations: any = {};
+    metadata.zones.forEach((zone, idx) => {
+      zoneAnnotations[`zone-${idx}`] = {
+        type: "box",
+        yMin: zone.min,
+        yMax: zone.max === Infinity ? metadata.yAxis.max : zone.max,
+        backgroundColor: getZoneColor(zone.color) + "15", // 15 = 8.5% opacity
+        borderWidth: 0,
+        drawTime: "beforeDatasetsDraw",
+      };
+    });
+
+    // Build threshold labels (no lines, just colored text labels at boundaries)
+    const thresholdAnnotations: any = {};
+    (metadata.thresholdLines || []).forEach((line, idx) => {
+      thresholdAnnotations[`threshold-${idx}`] = {
+        type: "label",
+        yValue: line.value,
+        xValue: ({ chart }: any) => {
+          const xScale = chart.scales.x;
+          return xScale.min; // Align to the left edge (start of data)
+        },
+        content: line.label,
+        color: "#ffffff", // White text for all labels
+        backgroundColor: "rgba(0,0,0,0.9)", // Black background
+        borderColor: line.color, // Colored border to indicate zone
+        borderWidth: 2, // Make border visible
+        font: {
+          size: 9,
+          weight: "600",
+        },
+        padding: { top: 2, bottom: 2, left: 6, right: 6 },
+        borderRadius: 3,
+        callout: {
+          display: false,
+        },
+        position: "start", // Left-align the text
+        xAdjust: 0, // No horizontal adjustment
+        yAdjust: 0,
+      };
+    });
+
     const chart = new Chart(ctx, {
       type: "line",
       data: {
         datasets: [
           {
-            label: prettyName,
+            label: metadata.displayName,
             data: filteredData,
             parsing: false,
             borderColor: color,
-            backgroundColor: color + "20",
+            backgroundColor: color + "30", // Slightly more opaque fill
             fill: true,
             pointRadius: 0,
-            borderWidth: 2,
+            borderWidth: 4, // Increased to 4 for maximum visibility
             tension: 0.3,
+            borderCapStyle: 'round',
+            borderJoinStyle: 'round',
           },
         ],
       },
@@ -73,20 +129,38 @@ function ChartTile({
             ticks: { color: "#8aa0b4", maxTicksLimit: 6 },
           },
           y: {
-            beginAtZero: true,
+            min: metadata.yAxis.min,
+            max: metadata.yAxis.suggestedMax || metadata.yAxis.max,
             grid: { color: "rgba(138,160,180,0.1)" },
             ticks: { color: "#8aa0b4" },
           },
         },
         plugins: {
           legend: { display: false },
-          tooltip: { mode: "index", intersect: false },
+          tooltip: {
+            mode: "index",
+            intersect: false,
+            callbacks: {
+              label: (context) => {
+                const value = context.parsed.y;
+                const zone = getCurrentZone(value, metadata);
+                const formattedValue = formatValue(value, metadata);
+                return zone ? `${metadata.displayName}: ${formattedValue} (${zone.label})` : `${metadata.displayName}: ${formattedValue}`;
+              },
+            },
+          },
+          annotation: {
+            annotations: {
+              ...zoneAnnotations,
+              ...thresholdAnnotations,
+            },
+          },
         },
       },
     });
     chartRef.current = chart;
     return () => chart.destroy();
-  }, []);
+  }, [metadata]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -95,26 +169,53 @@ function ChartTile({
     chart.update("none");
   }, [filteredData]);
 
-  const currentValue = latest?.value;
-  const unit = sensorId.includes("co2")
-    ? "ppm"
-    : sensorId.includes("temperature")
-    ? "°C"
-    : sensorId.includes("humidity")
-    ? "%"
-    : sensorId.includes("pm")
-    ? "µg/m³"
-    : "";
-
   return (
     <div className="chart-tile">
       <div className="tile-header">
         <div className="tile-title">
-          <div className="sensor-name">{prettyName}</div>
+          <div className="sensor-name">
+            {metadata.displayName}
+            <button
+              className="info-btn"
+              onClick={() => setShowInfo(!showInfo)}
+              title="Sensor information"
+              style={{
+                marginLeft: "8px",
+                background: "none",
+                border: "none",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                fontSize: "12px",
+                padding: "2px 6px",
+                borderRadius: "4px",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+            >
+              ℹ️
+            </button>
+          </div>
           {currentValue !== undefined && !isNaN(currentValue) && (
-            <div className="current-value">
-              {currentValue.toFixed(1)}
-              <span className="unit">{unit}</span>
+            <div className="current-value" style={{ color: currentZone ? getZoneColor(currentZone.color) : undefined }}>
+              {currentValue.toFixed(metadata.decimalPlaces)}
+              <span className="unit">{metadata.unit}</span>
+              {currentZone && (
+                <span
+                  className="zone-badge"
+                  style={{
+                    backgroundColor: getZoneColor(currentZone.color) + "20",
+                    color: getZoneColor(currentZone.color),
+                    marginLeft: "8px",
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                    fontSize: "0.75em",
+                    fontWeight: "600",
+                  }}
+                >
+                  {currentZone.label}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -124,6 +225,75 @@ function ChartTile({
           </button>
         )}
       </div>
+
+      {showInfo && (
+        <div
+          className="sensor-info"
+          style={{
+            background: "var(--surface-hover)",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+            padding: "12px",
+            fontSize: "12px",
+            marginBottom: "8px",
+          }}
+        >
+          {metadata.description && (
+            <div style={{ marginBottom: "8px" }}>
+              <strong>Description:</strong> {metadata.description}
+            </div>
+          )}
+          <div style={{ marginBottom: "8px" }}>
+            <strong>Range:</strong> {metadata.yAxis.min} - {metadata.yAxis.max} {metadata.unit}
+          </div>
+          <div style={{ marginBottom: "8px" }}>
+            <strong>Category:</strong> {metadata.category.replace("-", " ")}
+          </div>
+          <div style={{ marginBottom: "8px" }}>
+            <strong>Default time window:</strong> {metadata.defaultTimeWindow} hour{metadata.defaultTimeWindow !== 1 ? "s" : ""}
+          </div>
+          {metadata.standards && metadata.standards.length > 0 && (
+            <div>
+              <strong>Standards:</strong> {metadata.standards.join(", ")}
+            </div>
+          )}
+          {metadata.zones.length > 0 && (
+            <div style={{ marginTop: "12px" }}>
+              <strong>Health zones:</strong>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "6px" }}>
+                {metadata.zones.map((zone, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      fontSize: "11px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "12px",
+                        height: "12px",
+                        borderRadius: "2px",
+                        backgroundColor: getZoneColor(zone.color),
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{ fontWeight: "600" }}>{zone.label}:</span>
+                    <span style={{ color: "var(--text-muted)" }}>
+                      {zone.min === 0 ? "" : zone.min + " - "}
+                      {zone.max === Infinity ? metadata.yAxis.max + "+" : zone.max} {metadata.unit}
+                      {zone.description && ` (${zone.description})`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="chart-container">
         <canvas ref={canvasRef}></canvas>
       </div>
@@ -336,16 +506,31 @@ function App() {
 
   const sinceMs = Date.now() - hoursWindow * 3600 * 1000;
 
-  function prettyId(id: string) {
-    return id
-      .replace(/^sensor-/, "")
-      .replace(/_weight_concentration$/, "")
-      .replace(/__/g, " ")
-      .replace(/_/g, " ")
-      .replace(/\bco2\b/i, "CO₂")
-      .replace(/\bpm\b/i, "PM")
-      .trim();
-  }
+  // Group sensors by health priority
+  const sensorsByPriority = useMemo(() => {
+    const groups: Record<string, string[]> = {
+      primary: [],
+      secondary: [],
+      safety: [],
+      support: [],
+    };
+
+    knownSensors.forEach((sensorId) => {
+      const metadata = getSensorMetadata(sensorId);
+      groups[metadata.healthPriority].push(sensorId);
+    });
+
+    // Sort within each group
+    Object.keys(groups).forEach((key) => {
+      groups[key].sort((a, b) => {
+        const aName = getSensorMetadata(a).displayName;
+        const bName = getSensorMetadata(b).displayName;
+        return aName.localeCompare(bName);
+      });
+    });
+
+    return groups;
+  }, [knownSensors]);
 
   async function start() {
     if (!deviceURL) return;
@@ -473,6 +658,12 @@ function App() {
   function addTile(sensorId: string) {
     if (!displayedTiles.includes(sensorId)) {
       setDisplayedTiles([...displayedTiles, sensorId]);
+
+      // Auto-adjust time window for leak detection sensors
+      const metadata = getSensorMetadata(sensorId);
+      if (metadata.category === "leak-detection" && hoursWindow > 1) {
+        setHoursWindow(1); // Switch to real-time for leak detection
+      }
     }
   }
 
@@ -549,18 +740,80 @@ function App() {
 
           <div className="config-section">
             <div className="section-title">Available Sensors</div>
-            <div className="sensor-list">
-              {[...knownSensors].sort().map((id) => (
-                <button
-                  key={id}
-                  className={displayedTiles.includes(id) ? "sensor-chip active" : "sensor-chip"}
-                  onClick={() => (displayedTiles.includes(id) ? removeTile(id) : addTile(id))}
-                >
-                  {prettyId(id)} {displayedTiles.includes(id) && "✓"}
-                </button>
-              ))}
-              {knownSensors.size === 0 && <div className="muted">Waiting for sensor data…</div>}
-            </div>
+
+            {knownSensors.size === 0 ? (
+              <div className="muted">Waiting for sensor data…</div>
+            ) : (
+              <>
+                {sensorsByPriority.primary.length > 0 && (
+                  <div className="sensor-group">
+                    <div className="group-label">🎯 Primary Health Indicators</div>
+                    <div className="sensor-list">
+                      {sensorsByPriority.primary.map((id) => (
+                        <button
+                          key={id}
+                          className={displayedTiles.includes(id) ? "sensor-chip active" : "sensor-chip"}
+                          onClick={() => (displayedTiles.includes(id) ? removeTile(id) : addTile(id))}
+                        >
+                          {getSensorMetadata(id).displayName} {displayedTiles.includes(id) && "✓"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {sensorsByPriority.secondary.length > 0 && (
+                  <div className="sensor-group">
+                    <div className="group-label">📊 Secondary Indicators</div>
+                    <div className="sensor-list">
+                      {sensorsByPriority.secondary.map((id) => (
+                        <button
+                          key={id}
+                          className={displayedTiles.includes(id) ? "sensor-chip active" : "sensor-chip"}
+                          onClick={() => (displayedTiles.includes(id) ? removeTile(id) : addTile(id))}
+                        >
+                          {getSensorMetadata(id).displayName} {displayedTiles.includes(id) && "✓"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {sensorsByPriority.safety.length > 0 && (
+                  <div className="sensor-group">
+                    <div className="group-label">⚠️ Safety & Leak Detection</div>
+                    <div className="sensor-list">
+                      {sensorsByPriority.safety.map((id) => (
+                        <button
+                          key={id}
+                          className={displayedTiles.includes(id) ? "sensor-chip active" : "sensor-chip"}
+                          onClick={() => (displayedTiles.includes(id) ? removeTile(id) : addTile(id))}
+                        >
+                          {getSensorMetadata(id).displayName} {displayedTiles.includes(id) && "✓"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {sensorsByPriority.support.length > 0 && (
+                  <div className="sensor-group">
+                    <div className="group-label">🔧 Supporting Data</div>
+                    <div className="sensor-list">
+                      {sensorsByPriority.support.map((id) => (
+                        <button
+                          key={id}
+                          className={displayedTiles.includes(id) ? "sensor-chip active" : "sensor-chip"}
+                          onClick={() => (displayedTiles.includes(id) ? removeTile(id) : addTile(id))}
+                        >
+                          {getSensorMetadata(id).displayName} {displayedTiles.includes(id) && "✓"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="config-footer">

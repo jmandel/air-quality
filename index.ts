@@ -4,21 +4,50 @@ import homepage from "./index.html";
 
 const PORT = parseInt(process.env.PORT || "443", 10);
 const DEFAULT_AIR_SENSOR_URL = process.env.AIR_SENSOR_URL || "http://10.0.0.37/";
+const DEDUPE_WINDOW_MS = 10000; // 10 seconds
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 const db = new Database("db.sqlite");
 
-// Initialize database schema
+// ==================== SCHEMA INITIALIZATION ====================
+
+// Sensors table - normalized sensor metadata
+db.run(`
+  CREATE TABLE IF NOT EXISTS sensors (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    display_name TEXT,
+    unit TEXT
+  )
+`);
+
+// Readings table - raw data (7-day retention)
 db.run(`
   CREATE TABLE IF NOT EXISTS readings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts INTEGER NOT NULL,
-    sensorId TEXT NOT NULL,
+    sensor_id INTEGER NOT NULL,
     value REAL,
-    state TEXT,
-    eventId TEXT
+    FOREIGN KEY (sensor_id) REFERENCES sensors(id)
   )
 `);
 
+// Aggregated readings - minutely summaries (permanent retention)
+db.run(`
+  CREATE TABLE IF NOT EXISTS readings_aggregated (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    minute_ts INTEGER NOT NULL,
+    sensor_id INTEGER NOT NULL,
+    avg_value REAL NOT NULL,
+    min_value REAL NOT NULL,
+    max_value REAL NOT NULL,
+    sample_count INTEGER NOT NULL,
+    UNIQUE(minute_ts, sensor_id),
+    FOREIGN KEY (sensor_id) REFERENCES sensors(id)
+  )
+`);
+
+// Settings table
 db.run(`
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -26,55 +55,91 @@ db.run(`
   )
 `);
 
-// Indexes for efficient queries
+// Indexes
 db.run(`CREATE INDEX IF NOT EXISTS idx_readings_ts ON readings(ts)`);
-db.run(`CREATE INDEX IF NOT EXISTS idx_readings_sensorId ON readings(sensorId)`);
-// Composite index for efficient deduplication queries
-db.run(`CREATE INDEX IF NOT EXISTS idx_readings_dedupe ON readings(sensorId, value, state, ts)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_readings_sensor_id ON readings(sensor_id)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_readings_sensor_ts ON readings(sensor_id, ts)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_agg_minute_ts ON readings_aggregated(minute_ts)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_agg_sensor_id ON readings_aggregated(sensor_id)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_agg_lookup ON readings_aggregated(sensor_id, minute_ts)`);
 
-// Prepared statements
-const insertReading = db.prepare(`
-  INSERT INTO readings (ts, sensorId, value, state, eventId)
-  VALUES (?, ?, ?, ?, ?)
-`);
+// ==================== SENSOR CACHE ====================
 
-const getReadings = db.prepare(`
-  SELECT * FROM readings
-  WHERE ts >= ?
-  ORDER BY ts ASC
-`);
+interface SensorInfo {
+  sensor_id: number;
+  unit: string | null;
+  display_name: string | null;
+}
 
-const deleteOldReadings = db.prepare(`
-  DELETE FROM readings WHERE ts < ?
-`);
+const sensorCache = new Map<string, SensorInfo>();
 
-const countReadings = db.prepare(`SELECT COUNT(*) as count FROM readings`);
+function loadSensors() {
+  const sensors = db.prepare(`SELECT id, name, unit, display_name FROM sensors`).all() as Array<{
+    id: number;
+    name: string;
+    unit: string | null;
+    display_name: string | null;
+  }>;
 
-const getSetting = db.prepare(`SELECT value FROM settings WHERE key = ?`);
+  for (const sensor of sensors) {
+    sensorCache.set(sensor.name, {
+      sensor_id: sensor.id,
+      unit: sensor.unit,
+      display_name: sensor.display_name,
+    });
+  }
 
-const setSetting = db.prepare(`
-  INSERT INTO settings (key, value) VALUES (?, ?)
-  ON CONFLICT(key) DO UPDATE SET value = excluded.value
-`);
+  console.log(`📋 Loaded ${sensorCache.size} sensor mappings`);
+}
 
-const getAllReadings = db.prepare(`SELECT * FROM readings ORDER BY id ASC`);
+// Load sensors at startup
+loadSensors();
 
-// Efficient deduplication query using composite index
-const findDuplicate = db.prepare(`
-  SELECT id FROM readings
-  WHERE sensorId = ?
-    AND value IS ?
-    AND state = ?
-    AND ts >= ?
-    AND ts <= ?
-  LIMIT 1
-`);
+// Auto-register unknown sensors
+function getOrCreateSensor(sensorName: string): SensorInfo | null {
+  let info = sensorCache.get(sensorName);
+  if (info) return info;
 
-// Deduplication cache: stores recent readings to avoid redundant DB writes
-// Key format: "sensorId|value|state"
-// Value: timestamp of last seen reading
+  // Auto-register new sensor
+  const nextId = db.prepare(`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM sensors`).get() as { next_id: number };
+
+  try {
+    db.prepare(`INSERT INTO sensors (id, name, display_name, unit) VALUES (?, ?, ?, ?)`).run(
+      nextId.next_id,
+      sensorName,
+      sensorName.replace(/^sensor-/, '').replace(/_/g, ' '),
+      null
+    );
+
+    info = {
+      sensor_id: nextId.next_id,
+      unit: null,
+      display_name: sensorName,
+    };
+    sensorCache.set(sensorName, info);
+    console.log(`✨ Auto-registered sensor: ${sensorName} (ID: ${nextId.next_id})`);
+    return info;
+  } catch (e) {
+    console.warn(`⚠️  Failed to register sensor: ${sensorName}`, e);
+    return null;
+  }
+}
+
+// ==================== DEDUPLICATION ====================
+
 const dedupeCache = new Map<string, number>();
-const DEDUPE_WINDOW_MS = 10000; // 10 seconds
+
+function isDuplicate(sensor_id: number, value: number | null, ts: number): boolean {
+  const key = `${sensor_id}|${value}`;
+  const lastSeen = dedupeCache.get(key);
+
+  if (lastSeen && Math.abs(ts - lastSeen) < DEDUPE_WINDOW_MS) {
+    return true;
+  }
+
+  dedupeCache.set(key, ts);
+  return false;
+}
 
 // Clean up old cache entries periodically
 setInterval(() => {
@@ -84,89 +149,204 @@ setInterval(() => {
       dedupeCache.delete(key);
     }
   }
-}, 30000); // Clean every 30 seconds
+}, 30000);
 
-function isDuplicate(
-  sensorId: string,
-  value: number | null,
-  state: string,
-  ts: number
-): boolean {
-  const key = `${sensorId}|${value}|${state}`;
-  
-  // Check in-memory cache first (fast path)
-  const lastSeen = dedupeCache.get(key);
-  if (lastSeen && Math.abs(ts - lastSeen) < DEDUPE_WINDOW_MS) {
-    // Duplicate found in cache
-    return true;
-  }
-  
-  // Check database for duplicates within the window (uses composite index)
-  const minTs = ts - DEDUPE_WINDOW_MS;
-  const maxTs = ts + DEDUPE_WINDOW_MS;
-  const existing = findDuplicate.get(sensorId, value, state, minTs, maxTs);
-  
-  if (existing) {
-    // Found in DB, update cache
-    dedupeCache.set(key, ts);
-    return true;
-  }
-  
-  // Not a duplicate, record in cache
-  dedupeCache.set(key, ts);
-  return false;
+// ==================== AGGREGATION ====================
+
+interface MinuteAggregation {
+  minute_ts: number;
+  sensor_id: number;
+  values: number[];
 }
+
+const aggregationBuffer = new Map<string, MinuteAggregation>();
+
+const upsertAggregation = db.prepare(`
+  INSERT INTO readings_aggregated (minute_ts, sensor_id, avg_value, min_value, max_value, sample_count)
+  VALUES (?, ?, ?, ?, ?, ?)
+  ON CONFLICT(minute_ts, sensor_id) DO UPDATE SET
+    avg_value = ((avg_value * sample_count) + (excluded.avg_value * excluded.sample_count)) /
+                (sample_count + excluded.sample_count),
+    min_value = MIN(min_value, excluded.min_value),
+    max_value = MAX(max_value, excluded.max_value),
+    sample_count = sample_count + excluded.sample_count
+`);
+
+function addToAggregation(ts: number, sensor_id: number, value: number) {
+  const minute_ts = Math.floor(ts / 60000) * 60000;
+  const key = `${sensor_id}:${minute_ts}`;
+
+  let agg = aggregationBuffer.get(key);
+  if (!agg) {
+    agg = { minute_ts, sensor_id, values: [] };
+    aggregationBuffer.set(key, agg);
+  }
+  agg.values.push(value);
+}
+
+// Flush aggregations every 60 seconds
+setInterval(() => {
+  const now = Date.now();
+  const currentMinute = Math.floor(now / 60000) * 60000;
+
+  const toFlush: [string, MinuteAggregation][] = [];
+  for (const [key, agg] of aggregationBuffer.entries()) {
+    if (agg.minute_ts < currentMinute) {
+      toFlush.push([key, agg]);
+    }
+  }
+
+  if (toFlush.length === 0) return;
+
+  const transaction = db.transaction(() => {
+    for (const [key, agg] of toFlush) {
+      if (agg.values.length === 0) continue;
+
+      const avg = agg.values.reduce((a, b) => a + b, 0) / agg.values.length;
+      const min = Math.min(...agg.values);
+      const max = Math.max(...agg.values);
+
+      upsertAggregation.run(agg.minute_ts, agg.sensor_id, avg, min, max, agg.values.length);
+      aggregationBuffer.delete(key);
+    }
+  });
+
+  transaction();
+  console.log(`📊 Flushed ${toFlush.length} minute aggregations`);
+}, 60000);
+
+// ==================== DATA RETENTION ====================
+
+const deleteOldRawReadings = db.prepare(`DELETE FROM readings WHERE ts < ?`);
+
+function cleanupOldData() {
+  const sevenDaysAgo = Date.now() - SEVEN_DAYS_MS;
+  const result = deleteOldRawReadings.run(sevenDaysAgo);
+  console.log(`🧹 Deleted ${result.changes} raw readings older than 7 days`);
+
+  // Reclaim disk space after deletion
+  if (result.changes > 0) {
+    db.run("VACUUM");
+    console.log(`💾 Database vacuumed to reclaim space`);
+  }
+}
+
+// Run cleanup daily at 2 AM
+function scheduleCleanup() {
+  const now = new Date();
+  const next2AM = new Date(now);
+  next2AM.setHours(2, 0, 0, 0);
+
+  // If 2 AM already passed today, schedule for tomorrow
+  if (next2AM.getTime() <= now.getTime()) {
+    next2AM.setDate(next2AM.getDate() + 1);
+  }
+
+  const msUntil2AM = next2AM.getTime() - now.getTime();
+  const hoursUntil = (msUntil2AM / (1000 * 60 * 60)).toFixed(1);
+  console.log(`🕐 Next cleanup scheduled in ${hoursUntil} hours (at ${next2AM.toLocaleString()})`);
+
+  setTimeout(() => {
+    cleanupOldData();
+    setInterval(cleanupOldData, 24 * 60 * 60 * 1000);
+  }, msUntil2AM);
+}
+
+scheduleCleanup();
+
+// ==================== PREPARED STATEMENTS ====================
+
+const insertReading = db.prepare(`
+  INSERT INTO readings (ts, sensor_id, value)
+  VALUES (?, ?, ?)
+`);
+
+const getSetting = db.prepare(`SELECT value FROM settings WHERE key = ?`);
+
+const setSetting = db.prepare(`
+  INSERT INTO settings (key, value) VALUES (?, ?)
+  ON CONFLICT(key) DO UPDATE SET value = excluded.value
+`);
+
+// ==================== QUERY FUNCTIONS ====================
+
+function getReadings(since: number, until?: number): any[] {
+  const now = Date.now();
+  const sevenDaysAgo = now - SEVEN_DAYS_MS;
+  const untilTs = until || now;
+  const results: any[] = [];
+
+  // Raw data (last 7 days, full resolution)
+  if (since >= sevenDaysAgo && untilTs >= sevenDaysAgo) {
+    const rawQuery = db.prepare(`
+      SELECT
+        r.ts, s.name as sensorId, s.display_name as sensorName,
+        r.value, s.unit
+      FROM readings r
+      JOIN sensors s ON r.sensor_id = s.id
+      WHERE r.ts >= ? AND r.ts <= ?
+      ORDER BY r.ts ASC
+    `);
+    results.push(...rawQuery.all(Math.max(since, sevenDaysAgo), untilTs));
+  }
+
+  // Aggregated data (>7 days old, minutely summaries)
+  if (since < sevenDaysAgo) {
+    const aggQuery = db.prepare(`
+      SELECT
+        a.minute_ts as ts, s.name as sensorId, s.display_name as sensorName,
+        a.avg_value as value, a.min_value, a.max_value, a.sample_count,
+        s.unit, 'aggregated' as data_type
+      FROM readings_aggregated a
+      JOIN sensors s ON a.sensor_id = s.id
+      WHERE a.minute_ts >= ? AND a.minute_ts < ?
+      ORDER BY a.minute_ts ASC
+    `);
+    results.push(...aggQuery.all(since, Math.min(untilTs, sevenDaysAgo)));
+  }
+
+  return results.sort((a, b) => a.ts - b.ts);
+}
+
+// ==================== HTTP SERVER ====================
 
 const server = serve({
   port: PORT,
 
   routes: {
-    // ** HTML imports **
-    // Bundle & route index.html to "/". This uses HTMLRewriter to scan
-    // the HTML for `<script>` and `<link>` tags, runs Bun's JavaScript
-    // & CSS bundler on them, transpiles any TypeScript, JSX, and TSX,
-    // downlevels CSS with Bun's CSS parser and serves the result.
     "/": homepage,
 
-    // Serve and bundle sync.tsx
     "/sync.tsx": async (req) => {
       const file = Bun.file("./sync.tsx");
       return new Response(file);
     },
 
-    // ** Sensor Proxy Endpoint **
-    // Proxies EventSource connections to the local AIR-1 sensor
-    // This solves mixed content (HTTPS -> HTTP) and CORS issues
+    // Sensor proxy endpoint
     "/sensor/events": {
       async GET(req) {
         const url = new URL(req.url);
         const sensorUrl = url.searchParams.get("url") || DEFAULT_AIR_SENSOR_URL;
-        
-        // Clean up URL
         const targetUrl = sensorUrl.replace(/\/$/, "") + "/events";
-        
+
         console.log(`🔄 Proxying EventSource to: ${targetUrl}`);
-        
+
         try {
           const response = await fetch(targetUrl, {
-            headers: {
-              "Accept": "text/event-stream",
-            },
+            headers: { "Accept": "text/event-stream" },
           });
-          
+
           if (!response.ok) {
             return new Response(`Failed to connect to sensor: ${response.statusText}`, {
               status: response.status,
             });
           }
-          
-          // Return the EventSource stream with proper headers
+
           return new Response(response.body, {
             headers: {
               "Content-Type": "text/event-stream",
               "Cache-Control": "no-cache",
               "Connection": "keep-alive",
-              "X-Accel-Buffering": "no", // Disable nginx buffering if behind nginx
+              "X-Accel-Buffering": "no",
             },
           });
         } catch (error: any) {
@@ -178,9 +358,7 @@ const server = serve({
       },
     },
 
-    // ** API endpoints **
-
-    // POST /api/readings - Add new readings (batch)
+    // POST readings - store raw + aggregate
     "/api/readings": {
       async POST(req) {
         try {
@@ -192,43 +370,52 @@ const server = serve({
           let inserted = 0;
           let duplicates = 0;
 
-          const transaction = db.transaction((rows) => {
+          const transaction = db.transaction((rows: any[]) => {
             for (const r of rows) {
+              const sensorInfo = getOrCreateSensor(r.sensorId);
+              if (!sensorInfo) continue;
+
               // Check for duplicates
-              if (isDuplicate(r.sensorId, r.value ?? null, r.state ?? "", r.ts)) {
+              if (isDuplicate(sensorInfo.sensor_id, r.value ?? null, r.ts)) {
                 duplicates++;
                 continue;
               }
-              
-              insertReading.run(r.ts, r.sensorId, r.value ?? null, r.state ?? "", r.eventId ?? "");
+
+              // Insert raw reading
+              insertReading.run(r.ts, sensorInfo.sensor_id, r.value ?? null);
               inserted++;
+
+              // Add to aggregation
+              if (r.value !== null && r.value !== undefined) {
+                addToAggregation(r.ts, sensorInfo.sensor_id, r.value);
+              }
             }
           });
 
           transaction(readings);
 
-          return Response.json({ 
-            success: true, 
+          return Response.json({
+            success: true,
             count: readings.length,
             inserted,
-            duplicates 
+            duplicates
           });
         } catch (error: any) {
           return Response.json({ error: error.message }, { status: 500 });
         }
       },
 
-      // GET /api/readings?since=<timestamp> - Get readings since timestamp
+      // GET readings - unified query (raw + aggregated)
       async GET(req) {
         const url = new URL(req.url);
-        const since = url.searchParams.get("since");
-        const sinceMs = since ? parseInt(since) : 0;
+        const since = parseInt(url.searchParams.get("since") || "0");
+        const until = url.searchParams.get("until") ? parseInt(url.searchParams.get("until")!) : undefined;
 
-        const readings = getReadings.all(sinceMs);
+        const readings = getReadings(since, until);
         return Response.json(readings);
       },
 
-      // DELETE /api/readings?before=<timestamp> - Delete old readings
+      // DELETE old readings
       async DELETE(req) {
         const url = new URL(req.url);
         const before = url.searchParams.get("before");
@@ -237,26 +424,31 @@ const server = serve({
         }
 
         const beforeMs = parseInt(before);
-        const result = deleteOldReadings.run(beforeMs);
+        const result = deleteOldRawReadings.run(beforeMs);
 
         return Response.json({ success: true, deleted: result.changes });
       },
     },
 
-    // GET /api/readings/count - Get total count
+    // GET reading count
     "/api/readings/count": async (req) => {
-      const result = countReadings.get() as { count: number };
-      return Response.json({ count: result.count });
+      const raw = db.prepare(`SELECT COUNT(*) as c FROM readings`).get() as { c: number };
+      const agg = db.prepare(`SELECT COUNT(*) as c FROM readings_aggregated`).get() as { c: number };
+      return Response.json({
+        count: raw.c,
+        raw_readings: raw.c,
+        aggregated_minutes: agg.c,
+      });
     },
 
-    // GET /api/config - Get server configuration
+    // GET server config
     "/api/config": async (req) => {
       return Response.json({
         defaultSensorUrl: DEFAULT_AIR_SENSOR_URL,
       });
     },
 
-    // GET /api/settings/:key - Get setting
+    // GET/PUT settings
     "/api/settings/:key": {
       async GET(req) {
         const { key } = req.params;
@@ -271,7 +463,6 @@ const server = serve({
         });
       },
 
-      // PUT /api/settings/:key - Set setting
       async PUT(req) {
         const { key } = req.params;
         const value = await req.text();
@@ -282,19 +473,44 @@ const server = serve({
       },
     },
 
-    // GET /api/export/csv - Export all readings as CSV
+    // GET all sensors
+    "/api/sensors": async () => {
+      const sensors = db.prepare(`SELECT id, name, display_name, unit FROM sensors ORDER BY id`).all();
+      return Response.json(sensors);
+    },
+
+    // GET stats
+    "/api/stats": async () => {
+      const rawCount = db.prepare(`SELECT COUNT(*) as c FROM readings`).get() as { c: number };
+      const aggCount = db.prepare(`SELECT COUNT(*) as c FROM readings_aggregated`).get() as { c: number };
+      const oldestRaw = db.prepare(`SELECT MIN(ts) as ts FROM readings`).get() as { ts: number | null };
+      const oldestAgg = db.prepare(`SELECT MIN(minute_ts) as ts FROM readings_aggregated`).get() as { ts: number | null };
+      const sensorCount = db.prepare(`SELECT COUNT(*) as c FROM sensors`).get() as { c: number };
+
+      return Response.json({
+        raw_readings: rawCount.c,
+        aggregated_minutes: aggCount.c,
+        oldest_raw: oldestRaw.ts,
+        oldest_aggregated: oldestAgg.ts,
+        sensors: sensorCount.c,
+      });
+    },
+
+    // Export CSV
     "/api/export/csv": async (req) => {
-      const readings = getAllReadings.all() as Array<{
+      const readings = getReadings(0) as Array<{
         ts: number;
         sensorId: string;
         value: number | null;
-        state: string;
+        unit: string | null;
+        data_type?: string;
       }>;
 
-      const lines = ["ts_ms,sensor_id,value,state"];
+      const lines = ["ts_ms,sensor_id,value,unit,type"];
       for (const r of readings) {
-        const state = (r.state ?? "").replace(/"/g, '""');
-        lines.push(`${r.ts},${r.sensorId},${r.value ?? ""},\"${state}\"`);
+        const type = r.data_type || "raw";
+        const unit = r.unit || "";
+        lines.push(`${r.ts},${r.sensorId},${r.value ?? ""},${unit},${type}`);
       }
 
       return new Response(lines.join("\n"), {
@@ -306,9 +522,6 @@ const server = serve({
     },
   },
 
-  // Enable development mode for:
-  // - Detailed error messages
-  // - Hot reloading
   development: process.env.NODE_ENV !== "production",
 });
 
@@ -316,4 +529,6 @@ console.log(`🚀 Server running at http://localhost:${PORT}/`);
 console.log(`📊 API available at http://localhost:${PORT}/api`);
 console.log(`🔄 Sensor proxy available at /sensor/events`);
 console.log(`💾 Database: db.sqlite`);
-console.log(`🔄 Deduplication enabled: 10s window (indexed)`);
+console.log(`🔄 Deduplication: 10s window`);
+console.log(`📦 Aggregation: Real-time minutely summaries`);
+console.log(`🗄️  Retention: 7 days raw + permanent aggregates`);

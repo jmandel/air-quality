@@ -1,6 +1,7 @@
 import { serve } from "bun";
 import { Database } from "bun:sqlite";
 import homepage from "./index.html";
+import { SENSOR_SEED_DATA } from "./seed-data";
 
 const PORT = parseInt(process.env.PORT || "443", 10);
 const DEFAULT_AIR_SENSOR_URL = process.env.AIR_SENSOR_URL || "http://10.0.0.37/";
@@ -73,6 +74,23 @@ interface SensorInfo {
 
 const sensorCache = new Map<string, SensorInfo>();
 
+// Initialize sensors from seed data
+function initializeSensors() {
+  const insertSensor = db.prepare(`
+    INSERT OR IGNORE INTO sensors (id, name, display_name, unit)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  const transaction = db.transaction(() => {
+    for (const sensor of SENSOR_SEED_DATA) {
+      insertSensor.run(sensor.id, sensor.name, sensor.display_name, sensor.unit);
+    }
+  });
+
+  transaction();
+}
+
+// Load sensors into cache
 function loadSensors() {
   const sensors = db.prepare(`SELECT id, name, unit, display_name FROM sensors`).all() as Array<{
     id: number;
@@ -92,37 +110,18 @@ function loadSensors() {
   console.log(`📋 Loaded ${sensorCache.size} sensor mappings`);
 }
 
-// Load sensors at startup
+// Initialize and load sensors at startup
+initializeSensors();
 loadSensors();
 
-// Auto-register unknown sensors
-function getOrCreateSensor(sensorName: string): SensorInfo | null {
-  let info = sensorCache.get(sensorName);
-  if (info) return info;
-
-  // Auto-register new sensor
-  const nextId = db.prepare(`SELECT COALESCE(MAX(id), 0) + 1 as next_id FROM sensors`).get() as { next_id: number };
-
-  try {
-    db.prepare(`INSERT INTO sensors (id, name, display_name, unit) VALUES (?, ?, ?, ?)`).run(
-      nextId.next_id,
-      sensorName,
-      sensorName.replace(/^sensor-/, '').replace(/_/g, ' '),
-      null
-    );
-
-    info = {
-      sensor_id: nextId.next_id,
-      unit: null,
-      display_name: sensorName,
-    };
-    sensorCache.set(sensorName, info);
-    console.log(`✨ Auto-registered sensor: ${sensorName} (ID: ${nextId.next_id})`);
-    return info;
-  } catch (e) {
-    console.warn(`⚠️  Failed to register sensor: ${sensorName}`, e);
+// Get sensor info (strict - no auto-registration)
+function getSensor(sensorName: string): SensorInfo | null {
+  const info = sensorCache.get(sensorName);
+  if (!info) {
+    console.warn(`⚠️  Unknown sensor: ${sensorName} - skipping reading`);
     return null;
   }
+  return info;
 }
 
 // ==================== DEDUPLICATION ====================
@@ -372,7 +371,7 @@ const server = serve({
 
           const transaction = db.transaction((rows: any[]) => {
             for (const r of rows) {
-              const sensorInfo = getOrCreateSensor(r.sensorId);
+              const sensorInfo = getSensor(r.sensorId);
               if (!sensorInfo) continue;
 
               // Check for duplicates

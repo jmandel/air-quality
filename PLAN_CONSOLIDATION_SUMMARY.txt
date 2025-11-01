@@ -1,0 +1,106 @@
+PLAN CONSOLIDATION SUMMARY
+==========================
+Date: 2024-11-01
+
+OBJECTIVE
+---------
+Consolidate all database optimization plans into a SINGLE comprehensive document
+and clarify the units storage approach (human-readable text, not unit_id).
+
+ACTIONS TAKEN
+-------------
+1. Created new consolidated IMPLEMENTATION_PLAN.md (~14KB)
+   - Combines all previous planning documents
+   - Clear 5-phase implementation guide
+   - Includes all TypeScript code examples
+   - Storage projections and validation queries
+   
+2. Deleted redundant/outdated files:
+   - IMPLEMENTATION_PLAN_REVISED.md
+   - AGGREGATION_CORRECTION.md
+   - AGGREGATION_DETAILS.md
+   - OPTIMIZATION_PLAN.md
+   - PLAN_SUMMARY.txt
+   - ANALYSIS_SUMMARY.md
+
+3. Created README_OPTIMIZATION.md
+   - Quick reference for the optimization
+   - Summary of approach and storage impact
+
+KEY CLARIFICATIONS
+------------------
+✅ Units Storage:
+   - Human-readable TEXT in sensors.unit column
+   - Examples: "ppm", "°C", "µg/m³"
+   - NOT a separate unit_id or units table
+   - Stored ONCE per sensor (canonical form)
+   - Not extracted from state field
+
+✅ Aggregation Strategy:
+   - Aggregate ALL data from day 1 (not just >7 days old)
+   - Real-time: flush completed minutes every 60 seconds
+   - Minutely summaries stored forever
+   - Raw data deleted after 7 days
+
+✅ Schema Design:
+   sensors table:
+     - id: INTEGER PRIMARY KEY (1-byte reference)
+     - name: TEXT (SSE 'id' field, e.g., "sensor-co2")
+     - display_name: TEXT (SSE 'name' field, e.g., "CO₂")
+     - unit: TEXT (human-readable, e.g., "ppm")
+   
+   readings table (raw, 7-day retention):
+     - ts: INTEGER (timestamp ms)
+     - sensor_id: INTEGER (foreign key)
+     - value: REAL
+   
+   readings_aggregated table (forever):
+     - minute_ts: INTEGER (rounded to minute)
+     - sensor_id: INTEGER (foreign key)
+     - avg_value, min_value, max_value: REAL
+     - sample_count: INTEGER
+
+STORAGE IMPACT
+--------------
+Before: 5.4 GB/year (current trajectory)
+After:  346 MB/year (optimized)
+Reduction: 94%
+
+Timeline:
+  Day 7:    88 MB (84 MB raw + 3.5 MB agg)
+  Month 1:  81 MB (60 MB raw + 21 MB agg)
+  Year 1:   346 MB (60 MB raw + 286 MB agg)
+
+IMPLEMENTATION PHASES
+---------------------
+Phase 1: Schema Migration
+  - Create sensors table with unit column
+  - Add sensor_id to readings
+  - Update TypeScript ingestion code
+
+Phase 2: Real-Time Aggregation
+  - Create readings_aggregated table
+  - Implement buffer + flush mechanism
+  - Backfill historical data
+
+Phase 3: Data Retention
+  - Daily cleanup (delete raw >7 days)
+  - Weekly VACUUM
+
+Phase 4: Unified Query API
+  - Smart routing: raw for recent, aggregated for historical
+  - New API endpoints
+
+Phase 5: Schema Cleanup (optional, after 30 days)
+  - Remove old columns (sensorId, state, eventId)
+  - Final VACUUM
+
+SINGLE SOURCE OF TRUTH
+----------------------
+IMPLEMENTATION_PLAN.md
+
+ALL implementation details, code examples, SQL queries, 
+validation steps, and rollback procedures are in this one file.
+
+NO MORE MULTIPLE PLAN FILES!
+

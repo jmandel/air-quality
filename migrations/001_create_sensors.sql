@@ -56,7 +56,9 @@ INSERT OR IGNORE INTO sensors (id, name, display_name, unit) VALUES
     (29, 'light-rgb_light', 'RGB Light', NULL),
     (30, 'number-sen55_humidity_offset', 'Humidity Offset', '%'),
     (31, 'number-sen55_temperature_offset', 'Temperature Offset', '°C'),
-    (32, 'number-sleep_duration', 'Sleep Duration', 'seconds');
+    (32, 'number-sleep_duration', 'Sleep Duration', 'seconds'),
+    (33, 'switch-prevent_sleep', 'Prevent Sleep', NULL),
+    (34, 'text_sensor-voc_quality', 'VOC Quality', NULL);
 
 -- Add sensor_id column to readings table
 ALTER TABLE readings ADD COLUMN sensor_id INTEGER REFERENCES sensors(id);

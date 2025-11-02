@@ -320,43 +320,6 @@ const server = serve({
       return new Response(file);
     },
 
-    // Sensor proxy endpoint
-    "/sensor/events": {
-      async GET(req) {
-        const url = new URL(req.url);
-        const sensorUrl = url.searchParams.get("url") || DEFAULT_AIR_SENSOR_URL;
-        const targetUrl = sensorUrl.replace(/\/$/, "") + "/events";
-
-        console.log(`🔄 Proxying EventSource to: ${targetUrl}`);
-
-        try {
-          const response = await fetch(targetUrl, {
-            headers: { "Accept": "text/event-stream" },
-          });
-
-          if (!response.ok) {
-            return new Response(`Failed to connect to sensor: ${response.statusText}`, {
-              status: response.status,
-            });
-          }
-
-          return new Response(response.body, {
-            headers: {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "no-cache",
-              "Connection": "keep-alive",
-              "X-Accel-Buffering": "no",
-            },
-          });
-        } catch (error: any) {
-          console.error(`❌ Proxy error: ${error.message}`);
-          return new Response(`Failed to connect to sensor: ${error.message}`, {
-            status: 503,
-          });
-        }
-      },
-    },
-
     // POST readings - store raw + aggregate
     "/api/readings": {
       async POST(req) {
@@ -495,21 +458,25 @@ const server = serve({
       });
     },
 
-    // Export CSV
+    // Export CSV - minutely aggregated data only
     "/api/export/csv": async (req) => {
-      const readings = getReadings(0) as Array<{
-        ts: number;
-        sensorId: string;
-        value: number | null;
-        unit: string | null;
-        data_type?: string;
-      }>;
+      // Query all minutely aggregated data from the beginning of time
+      const aggQuery = db.prepare(`
+        SELECT
+          a.minute_ts as ts, s.name as sensorId, s.display_name as sensorName,
+          a.avg_value, a.min_value, a.max_value, a.sample_count,
+          s.unit
+        FROM readings_aggregated a
+        JOIN sensors s ON a.sensor_id = s.id
+        ORDER BY a.minute_ts ASC, s.name ASC
+      `);
 
-      const lines = ["ts_ms,sensor_id,value,unit,type"];
+      const readings = aggQuery.all();
+
+      const lines = ["ts_ms,sensor_id,sensor_name,avg_value,min_value,max_value,sample_count,unit"];
       for (const r of readings) {
-        const type = r.data_type || "raw";
         const unit = r.unit || "";
-        lines.push(`${r.ts},${r.sensorId},${r.value ?? ""},${unit},${type}`);
+        lines.push(`${r.ts},${r.sensorId},${r.sensorName},${r.avg_value ?? ""},${r.min_value ?? ""},${r.max_value ?? ""},${r.sample_count},${unit}`);
       }
 
       return new Response(lines.join("\n"), {
@@ -526,7 +493,6 @@ const server = serve({
 
 console.log(`🚀 Server running at http://localhost:${PORT}/`);
 console.log(`📊 API available at http://localhost:${PORT}/api`);
-console.log(`🔄 Sensor proxy available at /sensor/events`);
 console.log(`💾 Database: db.sqlite`);
 console.log(`🔄 Deduplication: 10s window`);
 console.log(`📦 Aggregation: Real-time minutely summaries`);

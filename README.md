@@ -79,16 +79,6 @@ Example API response:
 }
 ```
 
-### HTTPS Proxy
-
-Solves mixed content issues when accessing HTTPS dashboard with HTTP sensors:
-
-```
-GET /sensor/events?url=http://10.0.0.37/
-```
-
-The server fetches data from the HTTP sensor and streams it over HTTPS to the browser.
-
 ### Historical Data
 
 - Charts load historical data from SQLite on mount
@@ -103,9 +93,6 @@ The server fetches data from the HTTP sensor and streams it over HTTPS to the br
 - `GET /api/readings?since=<timestamp>` - Get readings since timestamp
 - `GET /api/readings/count` - Get total reading count
 - `DELETE /api/readings?before=<timestamp>` - Delete old readings
-
-### Sensor Proxy
-- `GET /sensor/events?url=<sensor_url>` - Proxy EventSource stream from HTTP sensor
 
 ### Settings
 - `GET /api/settings/:key` - Get setting value
@@ -176,8 +163,7 @@ The systemd service includes security features:
 
 ## How It Works
 
-1. React app connects to AIR-1 sensor via Server-Sent Events (SSE)
-   - Uses HTTPS proxy (`/sensor/events`) to avoid mixed content errors
+1. React app connects directly to AIR-1 sensor via Server-Sent Events (SSE)
 2. Sensor readings are buffered in memory and periodically flushed to backend
 3. Backend stores readings in SQLite with:
    - Automatic deduplication (10-second window)

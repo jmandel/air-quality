@@ -315,11 +315,6 @@ const server = serve({
   routes: {
     "/": homepage,
 
-    "/sync.tsx": async (req) => {
-      const file = Bun.file("./sync.tsx");
-      return new Response(file);
-    },
-
     // Sensor proxy endpoint
     "/sensor/events": {
       async GET(req) {

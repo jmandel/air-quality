@@ -213,9 +213,6 @@ sudo lsof -i :443
 ```bash
 # Test sensor directly
 curl http://10.0.0.37/
-
-# Test proxy
-curl "http://localhost:443/sensor/events?url=http://10.0.0.37/"
 ```
 
 ### Database Issues

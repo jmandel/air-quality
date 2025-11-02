@@ -1,0 +1,31 @@
+[Unit]
+Description=AIR-1 Logger Web Application
+After=network.target
+
+[Service]
+Type=simple
+User=exedev
+Group=exedev
+WorkingDirectory=/home/exedev/app
+Environment="PORT=443"
+Environment="NODE_ENV=production"
+# Use our custom script that watches index.ts, sync.tsx, and index.html
+ExecStart=/home/exedev/app/dev.sh
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=air1-logger
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/exedev/app
+
+# Allow binding to port 443
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

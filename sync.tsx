@@ -325,8 +325,8 @@ function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [historicalLoaded, setHistoricalLoaded] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
-  const [connectionMode, setConnectionMode] = useState<"device" | "server">("device");
-  const [useServerStream, setUseServerStream] = useState(false);
+  const [connectionMode, setConnectionMode] = useState<"device" | "server">("server");
+  const [uploadMode, setUploadMode] = useState(false); // Explicit device upload mode
 
   const esRef = useRef<EventSource | null>(null);
   const sessionRef = useRef(0);
@@ -444,6 +444,13 @@ function App() {
     };
   }, []);
 
+  // Auto-start server stream on mount (default behavior)
+  useEffect(() => {
+    if (!settingsLoaded || isLogging) return;
+    // Automatically connect to server stream when page loads
+    start();
+  }, [settingsLoaded]);
+
   // Save settings to backend
   useEffect(() => {
     if (!settingsLoaded) return;
@@ -537,15 +544,16 @@ function App() {
   }, [knownSensors]);
 
   async function start() {
-    // Determine URL based on connection mode
+    // Determine URL based on mode: server stream (default) or device upload
     let url: string;
-    if (useServerStream) {
-      url = `${API_BASE}/stream`;
-      setConnectionMode("server");
-    } else {
-      if (!deviceURL) return;
+    if (uploadMode && deviceURL) {
+      // Explicit upload mode: connect to device
       url = deviceURL.replace(/\/$/, "") + "/events";
       setConnectionMode("device");
+    } else {
+      // Default: connect to server stream
+      url = `${API_BASE}/stream`;
+      setConnectionMode("server");
     }
 
     const sessionId = sessionRef.current + 1;
@@ -559,7 +567,7 @@ function App() {
     try {
       setStatus("connecting");
       setIsLogging(true);
-      console.log(`🔗 Connecting to: ${url} (mode: ${useServerStream ? 'server' : 'device'})`);
+      console.log(`🔗 Connecting to: ${url} (mode: ${uploadMode ? 'device-upload' : 'server-view'})`);
       const es = new EventSource(url);
       esRef.current = es;
 
@@ -710,25 +718,25 @@ function App() {
               value={deviceURL}
               onChange={(e) => setDeviceURL(e.target.value)}
               placeholder="http://apollo-air-1-xxxxxx.local"
-              disabled={useServerStream}
+              disabled={!uploadMode}
             />
             <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "8px", fontSize: "14px" }}>
               <input
                 type="checkbox"
-                checked={useServerStream}
-                onChange={(e) => setUseServerStream(e.target.checked)}
+                checked={uploadMode}
+                onChange={(e) => setUploadMode(e.target.checked)}
                 disabled={isLogging}
               />
               <span>
-                Use server stream (for remote access)
+                <strong>Upload from local device</strong>
                 <span style={{ marginLeft: "4px", fontSize: "12px", opacity: 0.7 }}>
-                  - Get real-time updates from server instead of device
+                  - Connect to device and upload readings to server
                 </span>
               </span>
             </label>
             {!isLogging ? (
-              <button onClick={start} disabled={!useServerStream && !deviceURL}>
-                Start Logging
+              <button onClick={start} disabled={uploadMode && !deviceURL}>
+                {uploadMode ? "Start Upload" : "Reconnect"}
               </button>
             ) : (
               <button className="danger" onClick={stop}>

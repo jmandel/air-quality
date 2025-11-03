@@ -376,16 +376,7 @@ const server = serve({
   port: PORT,
 
   routes: {
-    "/": async (req) => {
-      return new Response(homepage, {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Pragma": "no-cache",
-          "Expires": "0",
-        },
-      });
-    },
+    "/": homepage,
     // SSE stream endpoint for remote clients
     "/api/stream": async (req) => {
       const clientId = crypto.randomUUID();
@@ -612,7 +603,7 @@ const server = serve({
     },
   },
 
-  development: process.env.NODE_ENV !== "production",
+  development: true,
 });
 
 console.log(`🚀 Server running at http://localhost:${PORT}/`);

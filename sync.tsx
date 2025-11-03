@@ -347,41 +347,7 @@ function App() {
     let cancelled = false;
     (async () => {
       try {
-        // Periodic data freshness check for server view mode
-  useEffect(() => {
-    if (!isLogging || uploadMode) return;
-    
-    if (dataFreshnessTimerRef.current) {
-      clearInterval(dataFreshnessTimerRef.current);
-    }
-    
-    dataFreshnessTimerRef.current = setInterval(() => {
-      const timeSinceLastData = Date.now() - lastDataTimestamp.current;
-      
-      // If no data for 60 seconds in server mode, refresh historical data
-      if (timeSinceLastData > 60000) {
-        console.log("⏱️  No recent updates, refreshing historical data...");
-        setHistoricalLoaded(false); // Trigger reload
-      }
-    }, 30000); // Check every 30 seconds
-    
-    return () => {
-      if (dataFreshnessTimerRef.current) {
-        clearInterval(dataFreshnessTimerRef.current);
-      }
-    };
-  }, [isLogging, uploadMode]);
-
-  // Clean up reconnect timer on unmount
-  useEffect(() => {
-    return () => {
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-      }
-    };
-  }, []);
-
-    const sinceMs = Date.now() - hoursWindow * 3600 * 1000;
+        const sinceMs = Date.now() - hoursWindow * 3600 * 1000;
         const res = await fetch(`${API_BASE}/readings?since=${sinceMs}`);
 
         if (res.ok && !cancelled) {
@@ -588,7 +554,8 @@ function App() {
     };
   }, []);
 
-    const sinceMs = Date.now() - hoursWindow * 3600 * 1000;
+  // Calculate time window for charts
+  const sinceMs = Date.now() - hoursWindow * 3600 * 1000;
 
   // Group sensors by health priority
   const sensorsByPriority = useMemo(() => {

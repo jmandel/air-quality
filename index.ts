@@ -376,7 +376,16 @@ const server = serve({
   port: PORT,
 
   routes: {
-    "/": homepage,
+    "/": async (req) => {
+      return new Response(homepage, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      });
+    },
     // SSE stream endpoint for remote clients
     "/api/stream": async (req) => {
       const clientId = crypto.randomUUID();

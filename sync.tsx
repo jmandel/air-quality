@@ -535,10 +535,17 @@ function App() {
   }, [knownSensors]);
 
   async function start() {
-    if (!deviceURL) return;
+    // Determine URL based on connection mode
+    let url: string;
+    if (useServerStream) {
+      url = `${API_BASE}/stream`;
+      setConnectionMode("server");
+    } else {
+      if (!deviceURL) return;
+      url = deviceURL.replace(/\/$/, "") + "/events";
+      setConnectionMode("device");
+    }
 
-    // Direct connection to sensor
-    const url = deviceURL.replace(/\/$/, "") + "/events";
     const sessionId = sessionRef.current + 1;
     sessionRef.current = sessionId;
 
@@ -550,6 +557,7 @@ function App() {
     try {
       setStatus("connecting");
       setIsLogging(true);
+      console.log(`🔗 Connecting to: ${url} (mode: ${useServerStream ? 'server' : 'device'})`);
       const es = new EventSource(url);
       esRef.current = es;
 

@@ -334,6 +334,10 @@ function App() {
   const pending = useRef<Array<{ ts: number; sensorId: string; value: number; state: string; eventId: string }>>([]);
   const series = useRef<Record<string, Array<{ x: number; y: number }>>>({});
   const autoStartRef = useRef(false);
+  const reconnectTimerRef = useRef<Timer | null>(null);
+  const reconnectAttempts = useRef(0);
+  const lastDataTimestamp = useRef<number>(Date.now());
+  const dataFreshnessTimerRef = useRef<Timer | null>(null);
 
   // Load historical data from SQLite on mount
   useEffect(() => {
@@ -342,7 +346,41 @@ function App() {
     let cancelled = false;
     (async () => {
       try {
-        const sinceMs = Date.now() - hoursWindow * 3600 * 1000;
+        // Periodic data freshness check for server view mode
+  useEffect(() => {
+    if (!isLogging || uploadMode) return;
+    
+    if (dataFreshnessTimerRef.current) {
+      clearInterval(dataFreshnessTimerRef.current);
+    }
+    
+    dataFreshnessTimerRef.current = setInterval(() => {
+      const timeSinceLastData = Date.now() - lastDataTimestamp.current;
+      
+      // If no data for 60 seconds in server mode, refresh historical data
+      if (timeSinceLastData > 60000) {
+        console.log("⏱️  No recent updates, refreshing historical data...");
+        setHistoricalLoaded(false); // Trigger reload
+      }
+    }, 30000); // Check every 30 seconds
+    
+    return () => {
+      if (dataFreshnessTimerRef.current) {
+        clearInterval(dataFreshnessTimerRef.current);
+      }
+    };
+  }, [isLogging, uploadMode]);
+
+  // Clean up reconnect timer on unmount
+  useEffect(() => {
+    return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
+    };
+  }, []);
+
+    const sinceMs = Date.now() - hoursWindow * 3600 * 1000;
         const res = await fetch(`${API_BASE}/readings?since=${sinceMs}`);
 
         if (res.ok && !cancelled) {
@@ -515,7 +553,41 @@ function App() {
     return () => clearInterval(t);
   }, [retentionDays]);
 
-  const sinceMs = Date.now() - hoursWindow * 3600 * 1000;
+  // Periodic data freshness check for server view mode
+  useEffect(() => {
+    if (!isLogging || uploadMode) return;
+    
+    if (dataFreshnessTimerRef.current) {
+      clearInterval(dataFreshnessTimerRef.current);
+    }
+    
+    dataFreshnessTimerRef.current = setInterval(() => {
+      const timeSinceLastData = Date.now() - lastDataTimestamp.current;
+      
+      // If no data for 60 seconds in server mode, refresh historical data
+      if (timeSinceLastData > 60000) {
+        console.log("⏱️  No recent updates, refreshing historical data...");
+        setHistoricalLoaded(false); // Trigger reload
+      }
+    }, 30000); // Check every 30 seconds
+    
+    return () => {
+      if (dataFreshnessTimerRef.current) {
+        clearInterval(dataFreshnessTimerRef.current);
+      }
+    };
+  }, [isLogging, uploadMode]);
+
+  // Clean up reconnect timer on unmount
+  useEffect(() => {
+    return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
+    };
+  }, []);
+
+    const sinceMs = Date.now() - hoursWindow * 3600 * 1000;
 
   // Group sensors by health priority
   const sensorsByPriority = useMemo(() => {
@@ -543,7 +615,26 @@ function App() {
     return groups;
   }, [knownSensors]);
 
-  async function start() {
+  function scheduleReconnect() {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+    }
+    
+    // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
+    const delay = Math.min(2000 * Math.pow(2, reconnectAttempts.current), 30000);
+    reconnectAttempts.current++;
+    
+    console.log(`📡 Reconnecting in ${delay/1000}s (attempt ${reconnectAttempts.current})...`);
+    
+    reconnectTimerRef.current = setTimeout(() => {
+      if (!isLogging) {
+        console.log(`🔄 Attempting reconnect...`);
+        start();
+      }
+    }, delay);
+  }
+
+    async function start() {
     // Determine URL based on mode: server stream (default) or device upload
     let url: string;
     if (uploadMode && deviceURL) {
@@ -583,6 +674,10 @@ function App() {
           esRef.current = null;
           setIsLogging(false);
           setStatus("disconnected");
+          // Auto-reconnect for server view mode
+          if (!uploadMode) {
+            scheduleReconnect();
+          }
         } else {
           setStatus("error");
         }
@@ -605,6 +700,8 @@ function App() {
       es.addEventListener("state", (ev: any) => {
         if (sessionRef.current !== sessionId) return;
         const ts = Date.now();
+        lastDataTimestamp.current = ts;
+        reconnectAttempts.current = 0; // Reset on successful data
         let payload = null;
         try {
           payload = JSON.parse(ev.data);
@@ -646,6 +743,11 @@ function App() {
       esRef.current.close();
       esRef.current = null;
     }
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    reconnectAttempts.current = 0;
     setIsLogging(false);
     setStatus("disconnected");
   }

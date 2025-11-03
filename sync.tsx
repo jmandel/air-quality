@@ -695,9 +695,24 @@ function App() {
               value={deviceURL}
               onChange={(e) => setDeviceURL(e.target.value)}
               placeholder="http://apollo-air-1-xxxxxx.local"
+              disabled={useServerStream}
             />
+            <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "8px", fontSize: "14px" }}>
+              <input
+                type="checkbox"
+                checked={useServerStream}
+                onChange={(e) => setUseServerStream(e.target.checked)}
+                disabled={isLogging}
+              />
+              <span>
+                Use server stream (for remote access)
+                <span style={{ marginLeft: "4px", fontSize: "12px", opacity: 0.7 }}>
+                  - Get real-time updates from server instead of device
+                </span>
+              </span>
+            </label>
             {!isLogging ? (
-              <button onClick={start} disabled={!deviceURL}>
+              <button onClick={start} disabled={!useServerStream && !deviceURL}>
                 Start Logging
               </button>
             ) : (

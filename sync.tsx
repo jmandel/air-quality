@@ -17,6 +17,7 @@ function ChartTile({
   sinceMs,
   latest,
   onRemove,
+  dataVersion,
 }: {
   sensorId: string;
   data: Array<{ x: number; y: number }>;

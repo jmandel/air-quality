@@ -23,6 +23,7 @@ function ChartTile({
   sinceMs: number;
   latest?: { value: number; state: string; ts: number };
   onRemove?: () => void;
+  dataVersion?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -31,7 +32,7 @@ function ChartTile({
   // Get sensor metadata from registry
   const metadata = useMemo(() => getSensorMetadata(sensorId), [sensorId]);
 
-  const filteredData = useMemo(() => data.filter((p) => p.x >= sinceMs), [data, sinceMs]);
+  const filteredData = useMemo(() => data.filter((p) => p.x >= sinceMs), [data, sinceMs, dataVersion]);
 
   const currentValue = latest?.value;
   const currentZone = useMemo(
@@ -320,6 +321,7 @@ function App() {
   const [latest, setLatest] = useState<Record<string, { ts: number; value: number; state: string }>>({});
   const [logLines, setLogLines] = useState<string[]>([]);
   const [rowsInDb, setRowsInDb] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0); // Force re-render when data updates
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [historicalLoaded, setHistoricalLoaded] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
@@ -608,11 +610,16 @@ function App() {
 
         setKnownSensors((s) => new Set([...s, sensorId]));
         setLatest((prev) => ({ ...prev, [sensorId]: { ts, value, state } }));
+        setDataVersion((v) => v + 1); // Trigger re-render for charts
 
         if (!series.current[sensorId]) series.current[sensorId] = [];
-        series.current[sensorId].push({ x: ts, y: value });
-        if (series.current[sensorId].length > 10000)
-          series.current[sensorId].splice(0, series.current[sensorId].length - 10000);
+        // Create a new array reference so React detects the change
+        const updated = [...series.current[sensorId], { x: ts, y: value }];
+        if (updated.length > 10000) {
+          series.current[sensorId] = updated.slice(updated.length - 10000);
+        } else {
+          series.current[sensorId] = updated;
+        }
 
         const rowData = { ts, sensorId, value, state, eventId };
         pending.current.push(rowData);
@@ -857,6 +864,7 @@ function App() {
             data={series.current[sensorId] || []}
             sinceMs={sinceMs}
             latest={latest[sensorId]}
+            dataVersion={dataVersion}
             onRemove={() => removeTile(sensorId)}
           />
         ))}

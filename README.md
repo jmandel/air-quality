@@ -5,6 +5,7 @@ Local logger and dashboard for Apollo AIR-1 air quality sensor.
 ## Features
 
 - 📊 Real-time sensor data streaming via Server-Sent Events (SSE)
+- 🌐 **Remote access mode** - View real-time data from anywhere (see [REMOTE_ACCESS.md](REMOTE_ACCESS.md))
 - 💾 SQLite database for persistent storage
 - 📈 Live charts with historical data visualization
 - 📥 CSV export
@@ -93,6 +94,7 @@ Example API response:
 - `GET /api/readings?since=<timestamp>` - Get readings since timestamp
 - `GET /api/readings/count` - Get total reading count
 - `DELETE /api/readings?before=<timestamp>` - Delete old readings
+- `GET /api/stream` - Server-Sent Events stream for real-time updates (remote access)
 
 ### Settings
 - `GET /api/settings/:key` - Get setting value

@@ -307,6 +307,69 @@ function getReadings(since: number, until?: number): any[] {
   return results.sort((a, b) => a.ts - b.ts);
 }
 
+// ==================== SERVER-SENT EVENTS (SSE) BROADCASTING ====================
+
+interface SSEClient {
+  id: string;
+  controller: ReadableStreamDefaultController;
+  connectedAt: number;
+}
+
+const sseClients = new Map<string, SSEClient>();
+
+function broadcastToClients(readings: any[]) {
+  if (sseClients.size === 0) return;
+
+  const timestamp = Date.now();
+  let disconnected: string[] = [];
+
+  for (const [clientId, client] of sseClients.entries()) {
+    try {
+      // Send each reading as a separate "state" event (matching device format)
+      for (const reading of readings) {
+        const eventData = {
+          id: reading.sensorId,
+          value: reading.value,
+          state: reading.state || "",
+        };
+
+        const message = `event: state\ndata: ${JSON.stringify(eventData)}\nid: ${reading.eventId || `${timestamp}:${reading.sensorId}`}\n\n`;
+        client.controller.enqueue(new TextEncoder().encode(message));
+      }
+    } catch (error) {
+      console.warn(`Failed to send to client ${clientId}, marking for removal`);
+      disconnected.push(clientId);
+    }
+  }
+
+  // Clean up disconnected clients
+  for (const clientId of disconnected) {
+    sseClients.delete(clientId);
+    console.log(`🔌 Client ${clientId} disconnected (total: ${sseClients.size})`);
+  }
+}
+
+// Periodic heartbeat to keep connections alive
+setInterval(() => {
+  if (sseClients.size === 0) return;
+
+  const ping = `event: ping\ndata: ${Date.now()}\n\n`;
+  const encoded = new TextEncoder().encode(ping);
+  let disconnected: string[] = [];
+
+  for (const [clientId, client] of sseClients.entries()) {
+    try {
+      client.controller.enqueue(encoded);
+    } catch {
+      disconnected.push(clientId);
+    }
+  }
+
+  for (const clientId of disconnected) {
+    sseClients.delete(clientId);
+  }
+}, 30000); // Every 30 seconds
+
 // ==================== HTTP SERVER ====================
 
 const server = serve({
@@ -314,7 +377,54 @@ const server = serve({
 
   routes: {
     "/": homepage,
+    // SSE stream endpoint for remote clients
+    "/api/stream": async (req) => {
+      const clientId = crypto.randomUUID();
+
+      const stream = new ReadableStream({
+        start(controller) {
+          sseClients.set(clientId, {
+            id: clientId,
+            controller,
+            connectedAt: Date.now(),
+          });
+
+          console.log(`🔌 Client ${clientId} connected to SSE stream (total: ${sseClients.size})`);
+
+          // Send initial connection message
+          const welcome = `event: connected\ndata: ${JSON.stringify({ clientId, timestamp: Date.now() })}\n\n`;
+          controller.enqueue(new TextEncoder().encode(welcome));
+
+          // Send periodic heartbeat to this client
+          const heartbeat = setInterval(() => {
+            try {
+              const ping = `event: ping\ndata: ${Date.now()}\n\n`;
+              controller.enqueue(new TextEncoder().encode(ping));
+            } catch {
+              clearInterval(heartbeat);
+              sseClients.delete(clientId);
+            }
+          }, 30000);
+
+          // Cleanup on disconnect
+          req.signal.addEventListener("abort", () => {
+            clearInterval(heartbeat);
+            sseClients.delete(clientId);
+            console.log(`🔌 Client ${clientId} disconnected (total: ${sseClients.size})`);
+          });
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
     },
+
 
     // POST readings - store raw + aggregate
     "/api/readings": {
@@ -327,6 +437,7 @@ const server = serve({
 
           let inserted = 0;
           let duplicates = 0;
+          const broadcastReadings: any[] = [];
 
           const transaction = db.transaction((rows: any[]) => {
             for (const r of rows) {
@@ -347,10 +458,18 @@ const server = serve({
               if (r.value !== null && r.value !== undefined) {
                 addToAggregation(r.ts, sensorInfo.sensor_id, r.value);
               }
+
+              // Collect for broadcasting
+              broadcastReadings.push(r);
             }
           });
 
           transaction(readings);
+
+          // Broadcast new readings to connected SSE clients
+          if (broadcastReadings.length > 0) {
+            broadcastToClients(broadcastReadings);
+          }
 
           return Response.json({
             success: true,

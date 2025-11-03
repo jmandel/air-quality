@@ -323,6 +323,8 @@ function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [historicalLoaded, setHistoricalLoaded] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [connectionMode, setConnectionMode] = useState<"device" | "server">("device");
+  const [useServerStream, setUseServerStream] = useState(false);
 
   const esRef = useRef<EventSource | null>(null);
   const sessionRef = useRef(0);

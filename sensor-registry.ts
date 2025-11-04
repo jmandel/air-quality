@@ -45,11 +45,13 @@ export interface SensorMetadata {
   // Optional metadata
   description?: string;
   standards?: string[]; // e.g., ["EPA", "WHO", "ASHRAE"]
+  defaultVisible?: boolean;
 }
 
 export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
   'sensor-co2': {
     displayName: 'CO₂',
+    defaultVisible: true,
     unit: 'ppm',
     decimalPlaces: 0,
     yAxis: { min: 0, max: 2000 },
@@ -75,6 +77,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
 
   'sensor-pm__2_5_m_weight_concentration': {
     displayName: 'PM2.5',
+    defaultVisible: true,
     unit: 'µg/m³',
     decimalPlaces: 1,
     yAxis: { min: 0, max: 50, suggestedMax: 25 },
@@ -159,6 +162,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
 
   'sensor-sen55_voc': {
     displayName: 'VOC Index',
+    defaultVisible: true,
     unit: 'index',
     decimalPlaces: 0,
     yAxis: { min: 0, max: 500 },
@@ -182,6 +186,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
 
   'sensor-sen55_nox': {
     displayName: 'NOx Index',
+    defaultVisible: true,
     unit: 'index',
     decimalPlaces: 0,
     yAxis: { min: 0, max: 500 },
@@ -202,6 +207,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
 
   'sensor-sen55_temperature': {
     displayName: 'Temperature',
+    defaultVisible: true,
     unit: '°C',
     decimalPlaces: 1,
     yAxis: { min: 15, max: 30 },
@@ -225,6 +231,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
 
   'sensor-sen55_humidity': {
     displayName: 'Humidity',
+    defaultVisible: true,
     unit: '%',
     decimalPlaces: 1,
     yAxis: { min: 0, max: 100 },

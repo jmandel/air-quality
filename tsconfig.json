@@ -3,8 +3,6 @@
     "target": "ESNext",
     "module": "ESNext",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx",
-    "jsxImportSource": "react",
     "moduleResolution": "bundler",
     "types": ["bun-types"],
     "strict": true,

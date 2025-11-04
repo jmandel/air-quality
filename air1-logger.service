@@ -9,7 +9,7 @@ Group=exedev
 WorkingDirectory=/home/exedev/app
 Environment="PORT=443"
 Environment="NODE_ENV=production"
-# Use our custom script that watches index.ts, sync.tsx, and index.html
+# Use our custom script that watches index.ts and frontend assets
 ExecStart=/home/exedev/app/dev.sh
 Restart=always
 RestartSec=3

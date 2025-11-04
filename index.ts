@@ -1,6 +1,7 @@
 import { serve } from "bun";
 import { Database } from "bun:sqlite";
-import homepage from "./index.html";
+import viewerPage from "./index.html";
+import uploaderPage from "./upload.html";
 import { SENSOR_SEED_DATA } from "./seed-data";
 
 const PORT = parseInt(process.env.PORT || "443", 10);
@@ -45,14 +46,6 @@ db.run(`
     sample_count INTEGER NOT NULL,
     UNIQUE(minute_ts, sensor_id),
     FOREIGN KEY (sensor_id) REFERENCES sensors(id)
-  )
-`);
-
-// Settings table
-db.run(`
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
   )
 `);
 
@@ -260,13 +253,6 @@ const insertReading = db.prepare(`
   VALUES (?, ?, ?)
 `);
 
-const getSetting = db.prepare(`SELECT value FROM settings WHERE key = ?`);
-
-const setSetting = db.prepare(`
-  INSERT INTO settings (key, value) VALUES (?, ?)
-  ON CONFLICT(key) DO UPDATE SET value = excluded.value
-`);
-
 // ==================== QUERY FUNCTIONS ====================
 
 function getReadings(since: number, until?: number): any[] {
@@ -331,6 +317,7 @@ function broadcastToClients(readings: any[]) {
           id: reading.sensorId,
           value: reading.value,
           state: reading.state || "",
+          ts: reading.ts ?? Date.now(),
         };
 
         const message = `event: state\ndata: ${JSON.stringify(eventData)}\nid: ${reading.eventId || `${timestamp}:${reading.sensorId}`}\n\n`;
@@ -376,10 +363,21 @@ const server = serve({
   port: PORT,
 
   routes: {
-    "/": homepage,
+    "/": viewerPage,
+    "/upload": uploaderPage,
+    "/upload.html": uploaderPage,
     // SSE stream endpoint for remote clients
     "/api/stream": async (req) => {
       const clientId = crypto.randomUUID();
+      let heartbeat: Timer | null = null;
+
+      const cleanup = () => {
+        if (heartbeat) {
+          clearInterval(heartbeat);
+          heartbeat = null;
+        }
+        sseClients.delete(clientId);
+      };
 
       const stream = new ReadableStream({
         start(controller) {
@@ -396,30 +394,34 @@ const server = serve({
           controller.enqueue(new TextEncoder().encode(welcome));
 
           // Send periodic heartbeat to this client
-          const heartbeat = setInterval(() => {
+          heartbeat = setInterval(() => {
             try {
               const ping = `event: ping\ndata: ${Date.now()}\n\n`;
               controller.enqueue(new TextEncoder().encode(ping));
             } catch {
-              clearInterval(heartbeat);
-              sseClients.delete(clientId);
+              cleanup();
             }
           }, 30000);
 
           // Cleanup on disconnect
           req.signal.addEventListener("abort", () => {
-            clearInterval(heartbeat);
-            sseClients.delete(clientId);
+            cleanup();
             console.log(`🔌 Client ${clientId} disconnected (total: ${sseClients.size})`);
           });
+        },
+        cancel() {
+          // Handle client disconnect/cancel
+          cleanup();
+          console.log(`🔌 Client ${clientId} cancelled stream (total: ${sseClients.size})`);
         },
       });
 
       return new Response(stream, {
         headers: {
           "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
           "Connection": "keep-alive",
+          "X-Accel-Buffering": "no",
           "Access-Control-Allow-Origin": "*",
         },
       });
@@ -491,114 +493,11 @@ const server = serve({
         const readings = getReadings(since, until);
         return Response.json(readings);
       },
-
-      // DELETE old readings
-      async DELETE(req) {
-        const url = new URL(req.url);
-        const before = url.searchParams.get("before");
-        if (!before) {
-          return Response.json({ error: "Missing 'before' parameter" }, { status: 400 });
-        }
-
-        const beforeMs = parseInt(before);
-        const result = deleteOldRawReadings.run(beforeMs);
-
-        return Response.json({ success: true, deleted: result.changes });
-      },
     },
 
-    // GET reading count
-    "/api/readings/count": async (req) => {
-      const raw = db.prepare(`SELECT COUNT(*) as c FROM readings`).get() as { c: number };
-      const agg = db.prepare(`SELECT COUNT(*) as c FROM readings_aggregated`).get() as { c: number };
-      return Response.json({
-        count: raw.c,
-        raw_readings: raw.c,
-        aggregated_minutes: agg.c,
-      });
-    },
-
-    // GET server config
-    "/api/config": async (req) => {
+    "/api/config": async () => {
       return Response.json({
         defaultSensorUrl: DEFAULT_AIR_SENSOR_URL,
-      });
-    },
-
-    // GET/PUT settings
-    "/api/settings/:key": {
-      async GET(req) {
-        const { key } = req.params;
-        const result = getSetting.get(key) as { value: string } | undefined;
-
-        if (!result) {
-          return Response.json({ error: "Not found" }, { status: 404 });
-        }
-
-        return new Response(result.value, {
-          headers: { "Content-Type": "application/json" },
-        });
-      },
-
-      async PUT(req) {
-        const { key } = req.params;
-        const value = await req.text();
-
-        setSetting.run(key, value);
-
-        return Response.json({ success: true });
-      },
-    },
-
-    // GET all sensors
-    "/api/sensors": async () => {
-      const sensors = db.prepare(`SELECT id, name, display_name, unit FROM sensors ORDER BY id`).all();
-      return Response.json(sensors);
-    },
-
-    // GET stats
-    "/api/stats": async () => {
-      const rawCount = db.prepare(`SELECT COUNT(*) as c FROM readings`).get() as { c: number };
-      const aggCount = db.prepare(`SELECT COUNT(*) as c FROM readings_aggregated`).get() as { c: number };
-      const oldestRaw = db.prepare(`SELECT MIN(ts) as ts FROM readings`).get() as { ts: number | null };
-      const oldestAgg = db.prepare(`SELECT MIN(minute_ts) as ts FROM readings_aggregated`).get() as { ts: number | null };
-      const sensorCount = db.prepare(`SELECT COUNT(*) as c FROM sensors`).get() as { c: number };
-
-      return Response.json({
-        raw_readings: rawCount.c,
-        aggregated_minutes: aggCount.c,
-        oldest_raw: oldestRaw.ts,
-        oldest_aggregated: oldestAgg.ts,
-        sensors: sensorCount.c,
-      });
-    },
-
-    // Export CSV - minutely aggregated data only
-    "/api/export/csv": async (req) => {
-      // Query all minutely aggregated data from the beginning of time
-      const aggQuery = db.prepare(`
-        SELECT
-          a.minute_ts as ts, s.name as sensorId, s.display_name as sensorName,
-          a.avg_value, a.min_value, a.max_value, a.sample_count,
-          s.unit
-        FROM readings_aggregated a
-        JOIN sensors s ON a.sensor_id = s.id
-        ORDER BY a.minute_ts ASC, s.name ASC
-      `);
-
-      const readings = aggQuery.all();
-
-      const lines = ["ts_ms,sensor_id,sensor_name,avg_value,min_value,max_value,sample_count,unit"];
-      for (const r of readings) {
-        const unit = r.unit || "";
-        lines.push(`${r.ts},${r.sensorId},${r.sensorName},${r.avg_value ?? ""},${r.min_value ?? ""},${r.max_value ?? ""},${r.sample_count},${unit}`);
-      }
-
-      return new Response(lines.join("\n"), {
-        headers: {
-          "Content-Type": "text/csv",
-          "Content-Disposition": `attachment; filename="air1_export_${new Date().toISOString().replace(/[:.]/g, "-")}.csv"`,
-        },
       });
     },
   },
@@ -607,7 +506,9 @@ const server = serve({
 });
 
 console.log(`🚀 Server running at http://localhost:${PORT}/`);
-console.log(`📊 API available at http://localhost:${PORT}/api`);
+console.log(`👀 Viewer available at http://localhost:${PORT}/`);
+console.log(`📤 Uploader available at http://localhost:${PORT}/upload.html`);
+console.log(`📊 API base at http://localhost:${PORT}/api`);
 console.log(`💾 Database: db.sqlite`);
 console.log(`🔄 Deduplication: 10s window`);
 console.log(`📦 Aggregation: Real-time minutely summaries`);

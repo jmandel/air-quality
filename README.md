@@ -4,15 +4,12 @@ Local logger and dashboard for Apollo AIR-1 air quality sensor.
 
 ## Features
 
-- 📊 Real-time sensor data streaming via Server-Sent Events (SSE)
-- 🌐 **Remote access mode** - View real-time data from anywhere (see [REMOTE_ACCESS.md](REMOTE_ACCESS.md))
-- 💾 SQLite database for persistent storage
-- 📈 Live charts with historical data visualization
-- 📥 CSV export
-- 🔧 Configurable retention policy
-- 🔄 Automatic deduplication (prevents redundant data from multiple tabs)
-- 🔒 HTTPS proxy for mixed content issues
-- ⚡ Built with Bun, TypeScript, and React
+- 📤 Dedicated uploader page (`upload.html`) that relays SSE data from the local AIR-1 device to the server
+- 👀 Lightweight viewer at `/` with curated defaults, live charts, and inline sensor selection (no modal hopping)
+- 📡 Server-Sent Events (SSE) for both ingestion and playback
+- 💾 SQLite storage with deduplication and minute-level aggregation for long-term history
+- 🔁 Automatic cleanup of raw readings after seven days while keeping aggregates
+- ⚡ Built with Bun and TypeScript (no separate build step)
 
 ## Quick Start
 
@@ -27,7 +24,9 @@ bun run dev
 PORT=8080 AIR_SENSOR_URL=http://apollo-air-1.local/ bun run dev
 ```
 
-Open http://localhost:3000 in your browser.
+On first launch the server creates `db.sqlite` automatically—no database file needs to be checked in.
+
+Open http://localhost:3000/upload.html to start uploading from the device, and http://localhost:3000/ to monitor readings.
 
 ## Production Deployment
 
@@ -48,7 +47,7 @@ sudo journalctl -u air1-logger -f
 ### Auto-Reload
 
 The service uses `bun run --watch` for automatic reloading when files change:
-- Watches: `index.ts`, `sync.tsx`, `index.html`
+- Watches: `index.ts`, `index.html`, `upload.html`, `viewer.ts`, `uploader.ts`
 - No manual restart needed after editing code
 - Graceful restarts with zero downtime
 
@@ -82,27 +81,18 @@ Example API response:
 
 ### Historical Data
 
-- Charts load historical data from SQLite on mount
-- Works even when sensor is disconnected
-- Time window configurable (1-720 hours)
-- Efficient indexed queries
+- The viewer bootstraps with a recent history window from SQLite so charts are not required
+- Minute-level aggregates backfill older ranges automatically
+- Works even when the device is offline (so long as an uploader has populated data)
+- Indexed queries keep lookups fast even with long retention
 
 ## API Endpoints
 
 ### Readings
-- `POST /api/readings` - Add sensor readings (batch, with deduplication)
-- `GET /api/readings?since=<timestamp>` - Get readings since timestamp
-- `GET /api/readings/count` - Get total reading count
-- `DELETE /api/readings?before=<timestamp>` - Delete old readings
-- `GET /api/stream` - Server-Sent Events stream for real-time updates (remote access)
-
-### Settings
-- `GET /api/settings/:key` - Get setting value
-- `PUT /api/settings/:key` - Set setting value
-
-### Config & Export
-- `GET /api/config` - Get server configuration
-- `GET /api/export/csv` - Export all readings as CSV
+- `POST /api/readings` — Batch ingest readings from the uploader with deduplication
+- `GET /api/readings?since=<ms>[&until=<ms>]` — Retrieve historical readings (raw or aggregated)
+- `GET /api/stream` — Server-Sent Events stream of new readings for viewers
+- `GET /api/config` — Viewer/uploader bootstrap data (e.g., default device URL)
 
 ## Database
 
@@ -136,7 +126,7 @@ sudo journalctl -u air1-logger -f
 sudo systemctl restart air1-logger
 
 # Test API
-curl http://localhost:443/api/config
+curl "http://localhost:443/api/readings?since=$(($(date +%s)*1000 - 3600000))"
 
 # Check database
 sqlite3 ~/app/db.sqlite "SELECT COUNT(*) FROM readings;"
@@ -156,32 +146,29 @@ The systemd service includes security features:
 
 ```
 .
-├── index.ts            # Backend API server (Bun + SQLite)
-├── sync.tsx            # React frontend application
-├── index.html          # HTML entry point
+├── index.ts            # Bun + SQLite backend and SSE API
+├── index.html          # Viewer page (live dashboard)
+├── upload.html         # Uploader page (device bridge)
+├── viewer.ts           # Client script for the viewer
+├── uploader.ts         # Client script for the uploader
+├── seed-data.ts        # Sensor metadata and ids
 ├── db.sqlite           # SQLite database (auto-created)
 └── package.json        # Dependencies
 ```
 
 ## How It Works
 
-1. React app connects directly to AIR-1 sensor via Server-Sent Events (SSE)
-2. Sensor readings are buffered in memory and periodically flushed to backend
-3. Backend stores readings in SQLite with:
-   - Automatic deduplication (10-second window)
-   - Indexed queries for performance
-   - Configurable retention policy
-4. Charts display both:
-   - Historical data from SQLite (loaded on mount)
-   - Live data from sensor stream (real-time updates)
-5. All settings are persisted in database
+1. `upload.html` opens an SSE connection to the local AIR-1 device (`/events`) and buffers readings in the browser.
+2. The uploader flushes batches to `POST /api/readings`, where the backend deduplicates, stores, and aggregates the data in SQLite.
+3. `index.html` (the viewer) fetches recent history once and stays current by subscribing to the server's `/api/stream` SSE endpoint.
+4. Background jobs retain seven days of raw readings and keep aggregated minute summaries indefinitely.
 
 ## Development
 
 ### Local Development
 - Uses Bun's automatic bundling and hot reloading
-- Changes to `sync.tsx` or `index.html` trigger automatic reloads
-- TypeScript and JSX transpiled on-the-fly
+- Changes to `index.html`, `upload.html`, `viewer.ts`, or `uploader.ts` trigger automatic reloads
+- TypeScript modules are transpiled on-the-fly
 - No build step required
 
 ### Production Changes

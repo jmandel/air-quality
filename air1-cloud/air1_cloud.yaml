@@ -1,0 +1,123 @@
+substitutions:
+  # Device identity (required by Core.yaml)
+  name: apollo-air-1
+  friendly_name: "Apollo AIR-1"
+  version: "25.8.6.1"
+  device_description: "apollo-air-1 made by Apollo Automation - version 25.8.6.1"
+
+  # Your cloud ingest URL – change this to your real endpoint
+  cloud_endpoint: "https://air443.exe.dev/api/submit"
+
+packages:
+  # Use Apollo's AIR-1.yaml (which includes Core.yaml with our sensor ID additions)
+  apollo_air1: !include vendor-apollo/Integrations/ESPHome/AIR-1.yaml
+
+time:
+  - platform: sntp
+    id: sntp_time
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  # If you want the MAC suffix in the hostname, set this to true
+  name_add_mac_suffix: false
+
+wifi:
+  # TODO: put your real Wi‑Fi details here
+  ssid: "cup-o-guest"
+  password: "WIFI_PASSWORD_REDACTED"
+
+  # Optional but handy: if you give the AIR‑1 a DHCP reservation,
+  # you can tell ESPHome to always use that address for OTA uploads.
+  # use_address: 192.168.1.50
+
+# AIR-1.yaml provides: esphome, logger, ota (with default password)
+# We override specific settings below:
+
+# OTA password override (AIR-1.yaml default is "apolloautomation")
+ota:
+  - platform: esphome
+    password: "change-me-ota-password"
+
+# Tiny built-in web page at http://<device-ip>
+web_server:
+  version: 3
+
+# HTTP client we'll use to POST to your cloud endpoint
+http_request:
+
+# This runs every 60 seconds and does the POST
+# Post a snapshot every 60s while the device is awake
+interval:
+  - interval: 60s
+    then:
+      # Optional: make sure everything is freshly updated before posting
+      - script.execute: reportAllValues
+
+      - http_request.post:
+          url: ${cloud_endpoint}
+          request_headers:
+            Content-Type: application/json
+          json: |-
+            // Basic metadata
+            root["device"]      = "${name}";
+            root["fw_version"]  = "${version}";
+            root["description"] = "${device_description}";
+
+            if (id(sntp_time).now().is_valid()) {
+              root["timestamp"] = id(sntp_time).now().strftime("%FT%TZ");
+            }
+
+            // Core measurements
+            auto meas = root.createNestedObject("measurements");
+
+            // SCD40 CO2
+            meas["co2_ppm"] = id(co2).state;
+
+            // DPS310 baro + temp
+            meas["pressure_hpa"] = id(dps310pressure).state;
+            meas["dps_temp_c"]   = id(dps310temperature).state;
+
+            // SEN55 temp/humidity (offset-corrected)
+            meas["sen55_temp_c"]       = id(sen55_temperature).state;
+            meas["sen55_humidity_pct"] = id(sen55_humidity).state;
+
+            // VOC / NOx indices
+            meas["voc_index"] = id(sen55_voc).state;
+            meas["nox_index"] = id(sen55_nox).state;
+
+            // PM mass concentrations (µg/m³)
+            auto pm = meas.createNestedObject("pm_ug_m3");
+            pm["pm1"]        = id(pm_1_0).state;
+            pm["pm2_5"]      = id(pm_2_5).state;
+            pm["pm4"]        = id(pm_4_0).state;
+            pm["pm10"]       = id(pm_10_0).state;
+            pm["pm0_3_to_1"] = id(pm0_3_to_1).state;
+            pm["pm1_to_2_5"] = id(pm1_to_2_5).state;
+            pm["pm2_5_to_4"] = id(pm2_5_to_4).state;
+            pm["pm4_to_10"]  = id(pm4_to_10).state;
+
+            // Gas sensors (MICS-4514) – ppm values
+            auto gases = meas.createNestedObject("gases_ppm");
+            gases["no2"]     = id(gas_no2).state;
+            gases["co"]      = id(gas_co).state;
+            gases["h2"]      = id(gas_h2).state;
+            gases["ethanol"] = id(gas_ethanol).state;
+            gases["ch4"]     = id(gas_ch4).state;
+            gases["nh3"]     = id(gas_nh3).state;
+
+            // Diagnostics & config
+            auto diag = root.createNestedObject("diagnostics");
+            diag["esp_temp_c"]         = id(sys_esp_temperature).state;
+            diag["wifi_rssi_dbm"]      = id(wifi_signal_db).state;
+            diag["uptime_s"]           = id(sys_uptime).state;
+            diag["online"]             = id(ink_ha_connected).state;
+
+            diag["sleep_duration_min"] = id(deep_sleep_sleep_duration).state;
+            diag["prevent_sleep"]      = id(prevent_sleep).state;
+            diag["voc_quality"]        = id(voc_quality).state;
+
+            // Offsets so you can reconstruct raw vs corrected if needed
+            diag["sen55_temp_offset_c"]   = id(sen55_temperature_offset).state;
+            diag["sen55_hum_offset_pct"]  = id(sen55_humidity_offset).state;
+

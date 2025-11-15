@@ -639,6 +639,7 @@ const server = serve({
     "/api/config": async () => {
       return Response.json({
         defaultSensorUrl: DEFAULT_AIR_SENSOR_URL,
+        serverTime: Date.now(),
       });
     },
   },

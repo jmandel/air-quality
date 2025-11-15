@@ -592,7 +592,31 @@ const server = serve({
             broadcastToClients(broadcastReadings);
           }
 
+          // Detailed logging for review
+          const logEntry = {
+            timestamp: new Date().toISOString(),
+            device: data.device || 'unknown',
+            fw_version: data.fw_version,
+            device_timestamp: data.timestamp,
+            inserted,
+            duplicates,
+            errors,
+            measurements: data.measurements,
+            diagnostics: data.diagnostics
+          };
+          
           console.log(`📥 Device submission: ${data.device || 'unknown'} - ${inserted} inserted, ${duplicates} duplicates, ${errors} errors`);
+          console.log(`📋 Submission details: ${JSON.stringify(logEntry)}`);
+
+          return Response.json({
+            success: true,
+            device: data.device,
+            timestamp: data.timestamp,
+            inserted,
+            duplicates,
+            errors,
+            message: `Processed ${inserted + duplicates + errors} sensor readings`
+          });
 
           return Response.json({
             success: true,

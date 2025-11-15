@@ -494,6 +494,123 @@ const server = serve({
         return Response.json(readings);
       },
     },
+    // POST /api/submit - Direct submission from ESPHome device
+    "/api/submit": {
+      async POST(req) {
+        try {
+          const data = await req.json();
+          
+          // Validate required fields
+          if (!data.measurements || !data.timestamp) {
+            return Response.json({ 
+              error: "Missing required fields: measurements and timestamp" 
+            }, { status: 400 });
+          }
+
+          // Parse timestamp to milliseconds
+          const timestamp = new Date(data.timestamp).getTime();
+          if (isNaN(timestamp)) {
+            return Response.json({ 
+              error: "Invalid timestamp format" 
+            }, { status: 400 });
+          }
+
+          // Map ESPHome fields to sensor names in our database
+          const sensorMappings: Record<string, { sensorName: string, value: any }> = {
+            // Core measurements
+            'co2_ppm': { sensorName: 'sensor-co2', value: data.measurements.co2_ppm },
+            'pressure_hpa': { sensorName: 'sensor-dps310_pressure', value: data.measurements.pressure_hpa },
+            'dps_temp_c': { sensorName: 'sensor-sen55_temperature', value: data.measurements.dps_temp_c },
+            'voc_index': { sensorName: 'sensor-sen55_voc', value: data.measurements.voc_index },
+            'nox_index': { sensorName: 'sensor-sen55_nox', value: data.measurements.nox_index },
+            
+            // PM measurements
+            'pm1': { sensorName: 'sensor-pm__1_m_weight_concentration', value: data.measurements.pm_ug_m3?.pm1 },
+            'pm2_5': { sensorName: 'sensor-pm__2_5_m_weight_concentration', value: data.measurements.pm_ug_m3?.pm2_5 },
+            'pm4': { sensorName: 'sensor-pm__4_m_weight_concentration', value: data.measurements.pm_ug_m3?.pm4 },
+            'pm10': { sensorName: 'sensor-pm__10_m_weight_concentration', value: data.measurements.pm_ug_m3?.pm10 },
+            'pm0_3_to_1': { sensorName: 'sensor-pm_0_3_to_1__m', value: data.measurements.pm_ug_m3?.pm0_3_to_1 },
+            'pm1_to_2_5': { sensorName: 'sensor-pm_1_to_2_5__m', value: data.measurements.pm_ug_m3?.pm1_to_2_5 },
+            'pm2_5_to_4': { sensorName: 'sensor-pm_2_5_to_4__m', value: data.measurements.pm_ug_m3?.pm2_5_to_4 },
+            'pm4_to_10': { sensorName: 'sensor-pm_4_to_10__m', value: data.measurements.pm_ug_m3?.pm4_to_10 },
+            
+            // Diagnostics
+            'esp_temp': { sensorName: 'sensor-esp_temperature', value: data.diagnostics?.esp_temp_c },
+            'wifi_rssi': { sensorName: 'sensor-rssi', value: data.diagnostics?.wifi_rssi_dbm },
+            'uptime': { sensorName: 'sensor-uptime', value: data.diagnostics?.uptime_s },
+          };
+
+          let inserted = 0;
+          let duplicates = 0;
+          let errors = 0;
+          const broadcastReadings: any[] = [];
+
+          const transaction = db.transaction(() => {
+            for (const [key, mapping] of Object.entries(sensorMappings)) {
+              const { sensorName, value } = mapping;
+              
+              // Skip if value is null, undefined, or NaN
+              if (value == null || (typeof value === 'number' && isNaN(value))) {
+                continue;
+              }
+
+              const sensorInfo = getSensor(sensorName);
+              if (!sensorInfo) {
+                console.warn(`Unknown sensor: ${sensorName}`);
+                errors++;
+                continue;
+              }
+
+              // Check for duplicates
+              if (isDuplicate(sensorInfo.sensor_id, value, timestamp)) {
+                duplicates++;
+                continue;
+              }
+
+              // Insert raw reading
+              insertReading.run(timestamp, sensorInfo.sensor_id, value);
+              inserted++;
+
+              // Add to aggregation
+              if (value !== null && value !== undefined) {
+                addToAggregation(timestamp, sensorInfo.sensor_id, value);
+              }
+
+              // Collect for broadcasting to SSE clients
+              broadcastReadings.push({
+                sensorId: sensorName,
+                value: value,
+                ts: timestamp
+              });
+            }
+          });
+
+          transaction();
+
+          // Broadcast new readings to connected SSE clients
+          if (broadcastReadings.length > 0) {
+            broadcastToClients(broadcastReadings);
+          }
+
+          console.log(`📥 Device submission: ${data.device || 'unknown'} - ${inserted} inserted, ${duplicates} duplicates, ${errors} errors`);
+
+          return Response.json({
+            success: true,
+            device: data.device,
+            timestamp: data.timestamp,
+            inserted,
+            duplicates,
+            errors,
+            message: `Processed ${inserted + duplicates + errors} sensor readings`
+          });
+        } catch (error: any) {
+          console.error('Error processing device submission:', error);
+          return Response.json({ error: error.message }, { status: 500 });
+        }
+      },
+    },
+
+
 
     "/api/config": async () => {
       return Response.json({

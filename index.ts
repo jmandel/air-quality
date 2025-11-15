@@ -501,19 +501,15 @@ const server = serve({
           const data = await req.json();
           
           // Validate required fields
-          if (!data.measurements || !data.timestamp) {
+          if (!data.measurements) {
             return Response.json({ 
-              error: "Missing required fields: measurements and timestamp" 
+              error: "Missing required field: measurements" 
             }, { status: 400 });
           }
-
-          // Parse timestamp to milliseconds
-          const timestamp = new Date(data.timestamp).getTime();
-          if (isNaN(timestamp)) {
-            return Response.json({ 
-              error: "Invalid timestamp format" 
-            }, { status: 400 });
-          }
+          // Use server time instead of device timestamp for consistency
+          const timestamp = Date.now();
+          // Store original device timestamp in logs for reference
+          const deviceTimestamp = data.timestamp;
 
           // Map ESPHome fields to sensor names in our database
           const sensorMappings: Record<string, { sensorName: string, value: any }> = {
@@ -597,7 +593,8 @@ const server = serve({
             timestamp: new Date().toISOString(),
             device: data.device || 'unknown',
             fw_version: data.fw_version,
-            device_timestamp: data.timestamp,
+            device_timestamp_claimed: deviceTimestamp,
+            server_timestamp_used: timestamp,
             inserted,
             duplicates,
             errors,

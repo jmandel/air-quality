@@ -517,8 +517,17 @@ const server = serve({
             'co2_ppm': { sensorName: 'sensor-co2', value: data.measurements.co2_ppm },
             'pressure_hpa': { sensorName: 'sensor-dps310_pressure', value: data.measurements.pressure_hpa },
             'dps_temp_c': { sensorName: 'sensor-sen55_temperature', value: data.measurements.dps_temp_c },
+            'sen55_humidity_pct': { sensorName: 'sensor-sen55_humidity', value: data.measurements.sen55_humidity_pct },
             'voc_index': { sensorName: 'sensor-sen55_voc', value: data.measurements.voc_index },
             'nox_index': { sensorName: 'sensor-sen55_nox', value: data.measurements.nox_index },
+            
+            // Gas measurements
+            'no2': { sensorName: 'sensor-nitrogen_dioxide', value: data.measurements.gases_ppm?.no2 },
+            'co': { sensorName: 'sensor-carbon_monoxide', value: data.measurements.gases_ppm?.co },
+            'h2': { sensorName: 'sensor-hydrogen', value: data.measurements.gases_ppm?.h2 },
+            'ethanol': { sensorName: 'sensor-ethanol', value: data.measurements.gases_ppm?.ethanol },
+            'ch4': { sensorName: 'sensor-methane', value: data.measurements.gases_ppm?.ch4 },
+            'nh3': { sensorName: 'sensor-ammonia', value: data.measurements.gases_ppm?.nh3 },
             
             // PM measurements
             'pm1': { sensorName: 'sensor-pm__1_m_weight_concentration', value: data.measurements.pm_ug_m3?.pm1 },
@@ -535,7 +544,6 @@ const server = serve({
             'wifi_rssi': { sensorName: 'sensor-rssi', value: data.diagnostics?.wifi_rssi_dbm },
             'uptime': { sensorName: 'sensor-uptime', value: data.diagnostics?.uptime_s },
           };
-
           let inserted = 0;
           let duplicates = 0;
           let errors = 0;

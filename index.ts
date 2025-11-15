@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import viewerPage from "./index.html";
 import uploaderPage from "./upload.html";
 import { SENSOR_SEED_DATA } from "./seed-data";
+import { askShelley } from "./ask-helper";
 
 const PORT = parseInt(process.env.PORT || "443", 10);
 const DEFAULT_AIR_SENSOR_URL = process.env.AIR_SENSOR_URL || "http://10.0.0.37/";
@@ -642,6 +643,37 @@ const server = serve({
     },
 
 
+
+    "/api/ask": {
+      async GET(req) {
+        const url = new URL(req.url);
+        const query = url.searchParams.get("q") || url.searchParams.get("query");
+        
+        if (!query) {
+          return Response.json({ 
+            error: "Missing query parameter. Use ?q=your_question" 
+          }, { status: 400 });
+        }
+        
+        try {
+          const { answer, conversationId } = await askShelley(query);
+          
+          return Response.json({
+            question: query,
+            answer,
+            conversationId,
+            timestamp: new Date().toISOString()
+          });
+          
+        } catch (error: any) {
+          console.error("Error in /api/ask:", error);
+          return Response.json({ 
+            error: "Internal server error",
+            message: error.message 
+          }, { status: 500 });
+        }
+      }
+    },
 
     "/api/config": async () => {
       return Response.json({

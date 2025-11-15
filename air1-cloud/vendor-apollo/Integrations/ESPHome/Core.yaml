@@ -237,11 +237,13 @@ sensor:
       accuracy_decimals: 1
     temperature:
       name: "SEN55 Temperature"
+      id: sen55_temperature
       accuracy_decimals: 1
       filters:
         - lambda: return x - id(sen55_temperature_offset).state;
     humidity:
       name: "SEN55 Humidity"
+      id: sen55_humidity
       filters:
         - lambda: return x - id(sen55_humidity_offset).state;
       accuracy_decimals: 1
@@ -309,16 +311,22 @@ sensor:
     id: mics4514
     nitrogen_dioxide:
       name: Nitrogen Dioxide
+      id: gas_no2
     carbon_monoxide:
       name: Carbon Monoxide
+      id: gas_co
     hydrogen:
       name: Hydrogen
+      id: gas_h2
     ethanol:
       name: Ethanol
+      id: gas_ethanol
     methane:
       name: Methane
+      id: gas_ch4
     ammonia:
       name: Ammonia
+      id: gas_nh3
     update_interval: 10s
 
 light:

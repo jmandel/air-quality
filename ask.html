@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ask About Your Air Quality</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-alt: #334155;
+      --border: #475569;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --success: #22c55e;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 2rem;
+      line-height: 1.6;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .subtitle {
+      color: var(--muted);
+      margin-bottom: 2rem;
+    }
+    
+    .query-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    
+    .input-group {
+      display: flex;
+      gap: 1rem;
+    }
+    
+    input[type="text"] {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      color: var(--text);
+      font-size: 1rem;
+    }
+    
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    
+    button {
+      background: var(--accent);
+      border: none;
+      border-radius: 6px;
+      padding: 0.75rem 2rem;
+      color: white;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    
+    button:hover {
+      opacity: 0.9;
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .examples {
+      margin-top: 1rem;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    
+    .example-chip {
+      display: inline-block;
+      background: var(--surface-alt);
+      padding: 0.25rem 0.75rem;
+      border-radius: 4px;
+      margin: 0.25rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .example-chip:hover {
+      background: var(--border);
+    }
+    
+    .response {
+      display: none;
+    }
+    
+    .response.visible {
+      display: block;
+    }
+    
+    .summary {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      font-size: 1.125rem;
+    }
+    
+    .blocks {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    }
+    
+    .block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+    
+    .block.full-width {
+      grid-column: 1 / -1;
+    }
+    
+    .block-title {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .metric-value {
+      font-size: 3rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    
+    .metric-unit {
+      font-size: 1.5rem;
+      color: var(--muted);
+      margin-left: 0.5rem;
+    }
+    
+    .metric-status-good { color: var(--success); }
+    .metric-status-warning { color: var(--warning); }
+    .metric-status-critical { color: var(--error); }
+    
+    .trend {
+      margin-top: 0.5rem;
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+    
+    .trend-up { color: var(--error); }
+    .trend-down { color: var(--success); }
+    
+    .text-variant-info { border-left: 3px solid var(--accent); padding-left: 1rem; }
+    .text-variant-warning { border-left: 3px solid var(--warning); padding-left: 1rem; }
+    .text-variant-error { border-left: 3px solid var(--error); padding-left: 1rem; }
+    .text-variant-success { border-left: 3px solid var(--success); padding-left: 1rem; }
+    
+    .chart-container {
+      margin-top: 1rem;
+      height: 300px;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+    }
+    
+    .error-message {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--error);
+      border-radius: 8px;
+      padding: 1rem;
+      color: var(--error);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌬️ Ask About Your Air Quality</h1>
+    <p class="subtitle">Ask questions in natural language and get data-driven answers</p>
+    
+    <div class="query-box">
+      <div class="input-group">
+        <input 
+          type="text" 
+          id="queryInput" 
+          placeholder="What's the current CO₂ level?"
+          autofocus
+        />
+        <button id="askButton">Ask</button>
+      </div>
+      
+      <div class="examples">
+        <strong>Examples:</strong>
+        <span class="example-chip" data-query="What's the current CO₂ level?">What's the current CO₂?</span>
+        <span class="example-chip" data-query="Is the air quality good right now?">Is air quality good?</span>
+        <span class="example-chip" data-query="Show me PM2.5 over the last hour">PM2.5 last hour</span>
+        <span class="example-chip" data-query="What was the peak temperature today?">Peak temperature</span>
+      </div>
+    </div>
+    
+    <div id="response" class="response"></div>
+  </div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script type="module">
+    const queryInput = document.getElementById('queryInput');
+    const askButton = document.getElementById('askButton');
+    const responseDiv = document.getElementById('response');
+    
+    // Example chips
+    document.querySelectorAll('.example-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        queryInput.value = chip.dataset.query;
+        askQuestion();
+      });
+    });
+    
+    // Enter key
+    queryInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') askQuestion();
+    });
+    
+    askButton.addEventListener('click', askQuestion);
+    
+    async function askQuestion() {
+      const query = queryInput.value.trim();
+      if (!query) return;
+      
+      askButton.disabled = true;
+      responseDiv.innerHTML = '<div class="loading">🤔 Thinking...</div>';
+      responseDiv.classList.add('visible');
+      
+      try {
+        const res = await fetch(`/api/ask?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        
+        if (data.error) {
+          responseDiv.innerHTML = `<div class="error-message">${data.error}</div>`;
+          return;
+        }
+        
+        if (data.isDashboard) {
+          renderDashboard(data.answer);
+        } else {
+          responseDiv.innerHTML = `<div class="summary">${escapeHtml(data.answer)}</div>`;
+        }
+      } catch (error) {
+        responseDiv.innerHTML = `<div class="error-message">Failed to get response: ${error.message}</div>`;
+      } finally {
+        askButton.disabled = false;
+      }
+    }
+    
+    function renderDashboard(dashboard) {
+      let html = '';
+      
+      if (dashboard.summary) {
+        html += `<div class="summary">${escapeHtml(dashboard.summary)}</div>`;
+      }
+      
+      html += '<div class="blocks">';
+      
+      for (const block of dashboard.blocks) {
+        if (block.type === 'text') {
+          html += renderTextBlock(block);
+        } else if (block.type === 'metric') {
+          html += renderMetricBlock(block);
+        } else if (block.type === 'chart') {
+          html += renderChartBlock(block);
+        }
+      }
+      
+      html += '</div>';
+      responseDiv.innerHTML = html;
+      
+      // Render charts after DOM update
+      setTimeout(() => {
+        dashboard.blocks.forEach((block, index) => {
+          if (block.type === 'chart') {
+            renderChart(block, `chart-${index}`);
+          }
+        });
+      }, 10);
+    }
+    
+    function renderTextBlock(block) {
+      const variant = block.variant || 'info';
+      return `
+        <div class="block full-width text-variant-${variant}">
+          ${block.title ? `<div class="block-title">${escapeHtml(block.title)}</div>` : ''}
+          <div>${escapeHtml(block.content)}</div>
+        </div>
+      `;
+    }
+    
+    function renderMetricBlock(block) {
+      const statusClass = block.status ? `metric-status-${block.status}` : '';
+      let trendHtml = '';
+      
+      if (block.trend) {
+        const trendClass = `trend-${block.trend.direction}`;
+        const arrow = block.trend.direction === 'up' ? '↑' : block.trend.direction === 'down' ? '↓' : '→';
+        const pct = block.trend.percentage ? ` ${block.trend.percentage}%` : '';
+        const period = block.trend.period ? ` ${block.trend.period}` : '';
+        trendHtml = `<div class="trend ${trendClass}">${arrow}${pct}${period}</div>`;
+      }
+      
+      return `
+        <div class="block">
+          <div class="block-title">${escapeHtml(block.title)}</div>
+          <div class="metric-value ${statusClass}">
+            ${block.value.toLocaleString()}
+            <span class="metric-unit">${escapeHtml(block.unit)}</span>
+          </div>
+          ${trendHtml}
+        </div>
+      `;
+    }
+    
+    function renderChartBlock(block) {
+      const chartId = `chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      return `
+        <div class="block full-width">
+          <div class="block-title">${escapeHtml(block.title)}</div>
+          <div class="chart-container">
+            <canvas id="${chartId}"></canvas>
+          </div>
+        </div>
+      `;
+    }
+    
+    function renderChart(block, canvasId) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      
+      const datasets = block.series.map(s => ({
+        label: s.name,
+        data: s.data.map(d => ({ x: d.x, y: d.y })),
+        borderColor: s.color || '#3b82f6',
+        backgroundColor: s.color ? `${s.color}20` : '#3b82f620',
+        tension: 0.3,
+        fill: block.chartType === 'area'
+      }));
+      
+      const annotations = {};
+      if (block.annotations) {
+        block.annotations.forEach((ann, i) => {
+          if (ann.type === 'threshold') {
+            annotations[`line${i}`] = {
+              type: 'line',
+              yMin: ann.value,
+              yMax: ann.value,
+              borderColor: ann.color || '#f59e0b',
+              borderWidth: 2,
+              borderDash: [5, 5],
+              label: {
+                display: true,
+                content: ann.label,
+                position: 'end'
+              }
+            };
+          }
+        });
+      }
+      
+      new Chart(canvas, {
+        type: block.chartType === 'bar' ? 'bar' : 'line',
+        data: { datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              type: block.xAxis.type === 'time' ? 'time' : 'linear',
+              title: {
+                display: true,
+                text: block.xAxis.label
+              }
+            },
+            y: {
+              title: {
+                display: true,
+                text: block.yAxis.unit ? `${block.yAxis.label} (${block.yAxis.unit})` : block.yAxis.label
+              },
+              min: block.yAxis.min,
+              max: block.yAxis.max
+            }
+          },
+          plugins: {
+            annotation: {
+              annotations
+            }
+          }
+        }
+      });
+    }
+    
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

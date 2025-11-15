@@ -366,6 +366,8 @@ const server = serve({
   routes: {
     "/": viewerPage,
     "/upload": uploaderPage,
+    "/ask": async () => new Response(Bun.file("ask.html")), 
+    "/ask.html": async () => new Response(Bun.file("ask.html")),
     "/upload.html": uploaderPage,
     // SSE stream endpoint for remote clients
     "/api/stream": async (req) => {
@@ -656,11 +658,15 @@ const server = serve({
         }
         
         try {
-          const { answer, conversationId } = await askShelley(query);
+          const { answer, conversationId, rawOutput } = await askShelley(query);
+          
+          // Check if answer is a DashboardResponse or plain text
+          const isDashboard = typeof answer === 'object' && answer !== null && 'blocks' in answer;
           
           return Response.json({
             question: query,
             answer,
+            isDashboard,
             conversationId,
             timestamp: new Date().toISOString()
           });
@@ -674,6 +680,7 @@ const server = serve({
         }
       }
     },
+
 
     "/api/config": async () => {
       return Response.json({

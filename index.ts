@@ -512,37 +512,39 @@ const server = serve({
           const deviceTimestamp = data.timestamp;
 
           // Map ESPHome fields to sensor names in our database
+          // Direct 1:1 mapping from JSON fields to database sensor names
           const sensorMappings: Record<string, { sensorName: string, value: any }> = {
             // Core measurements
-            'co2_ppm': { sensorName: 'sensor-co2', value: data.measurements.co2_ppm },
-            'pressure_hpa': { sensorName: 'sensor-dps310_pressure', value: data.measurements.pressure_hpa },
-            'dps_temp_c': { sensorName: 'sensor-sen55_temperature', value: data.measurements.dps_temp_c },
-            'sen55_humidity_pct': { sensorName: 'sensor-sen55_humidity', value: data.measurements.sen55_humidity_pct },
-            'voc_index': { sensorName: 'sensor-sen55_voc', value: data.measurements.voc_index },
-            'nox_index': { sensorName: 'sensor-sen55_nox', value: data.measurements.nox_index },
+            'co2_ppm': { sensorName: 'co2_ppm', value: data.measurements.co2_ppm },
+            'dps310_pressure_hpa': { sensorName: 'dps310_pressure_hpa', value: data.measurements.pressure_hpa },
+            'sen55_temp_c': { sensorName: 'sen55_temp_c', value: data.measurements.sen55_temp_c || data.measurements.dps_temp_c },
+            'sen55_humidity_pct': { sensorName: 'sen55_humidity_pct', value: data.measurements.sen55_humidity_pct },
+            'sen55_voc_index': { sensorName: 'sen55_voc_index', value: data.measurements.voc_index },
+            'sen55_nox_index': { sensorName: 'sen55_nox_index', value: data.measurements.nox_index },
             
-            // Gas measurements
-            'no2': { sensorName: 'sensor-nitrogen_dioxide', value: data.measurements.gases_ppm?.no2 },
-            'co': { sensorName: 'sensor-carbon_monoxide', value: data.measurements.gases_ppm?.co },
-            'h2': { sensorName: 'sensor-hydrogen', value: data.measurements.gases_ppm?.h2 },
-            'ethanol': { sensorName: 'sensor-ethanol', value: data.measurements.gases_ppm?.ethanol },
-            'ch4': { sensorName: 'sensor-methane', value: data.measurements.gases_ppm?.ch4 },
-            'nh3': { sensorName: 'sensor-ammonia', value: data.measurements.gases_ppm?.nh3 },
+            // Gas measurements (from gases_ppm object)
+            'no2_ppm': { sensorName: 'no2_ppm', value: data.measurements.gases_ppm?.no2 },
+            'co_ppm': { sensorName: 'co_ppm', value: data.measurements.gases_ppm?.co },
+            'h2_ppm': { sensorName: 'h2_ppm', value: data.measurements.gases_ppm?.h2 },
+            'ethanol_ppm': { sensorName: 'ethanol_ppm', value: data.measurements.gases_ppm?.ethanol },
+            'ch4_ppm': { sensorName: 'ch4_ppm', value: data.measurements.gases_ppm?.ch4 },
+            'nh3_ppm': { sensorName: 'nh3_ppm', value: data.measurements.gases_ppm?.nh3 },
             
-            // PM measurements
-            'pm1': { sensorName: 'sensor-pm__1_m_weight_concentration', value: data.measurements.pm_ug_m3?.pm1 },
-            'pm2_5': { sensorName: 'sensor-pm__2_5_m_weight_concentration', value: data.measurements.pm_ug_m3?.pm2_5 },
-            'pm4': { sensorName: 'sensor-pm__4_m_weight_concentration', value: data.measurements.pm_ug_m3?.pm4 },
-            'pm10': { sensorName: 'sensor-pm__10_m_weight_concentration', value: data.measurements.pm_ug_m3?.pm10 },
-            'pm0_3_to_1': { sensorName: 'sensor-pm_0_3_to_1__m', value: data.measurements.pm_ug_m3?.pm0_3_to_1 },
-            'pm1_to_2_5': { sensorName: 'sensor-pm_1_to_2_5__m', value: data.measurements.pm_ug_m3?.pm1_to_2_5 },
-            'pm2_5_to_4': { sensorName: 'sensor-pm_2_5_to_4__m', value: data.measurements.pm_ug_m3?.pm2_5_to_4 },
-            'pm4_to_10': { sensorName: 'sensor-pm_4_to_10__m', value: data.measurements.pm_ug_m3?.pm4_to_10 },
+            // PM mass measurements (from pm_ug_m3 object)
+            'pm1_ug_m3': { sensorName: 'pm1_ug_m3', value: data.measurements.pm_ug_m3?.pm1 },
+            'pm2_5_ug_m3': { sensorName: 'pm2_5_ug_m3', value: data.measurements.pm_ug_m3?.pm2_5 },
+            'pm4_ug_m3': { sensorName: 'pm4_ug_m3', value: data.measurements.pm_ug_m3?.pm4 },
+            'pm10_ug_m3': { sensorName: 'pm10_ug_m3', value: data.measurements.pm_ug_m3?.pm10 },
+            
+            // PM count measurements (from pm_ug_m3 object)
+            'pm0_3_to_1_num': { sensorName: 'pm0_3_to_1_num', value: data.measurements.pm_ug_m3?.pm0_3_to_1 },
+            'pm1_to_2_5_num': { sensorName: 'pm1_to_2_5_num', value: data.measurements.pm_ug_m3?.pm1_to_2_5 },
+            'pm2_5_to_4_num': { sensorName: 'pm2_5_to_4_num', value: data.measurements.pm_ug_m3?.pm2_5_to_4 },
+            'pm4_to_10_num': { sensorName: 'pm4_to_10_num', value: data.measurements.pm_ug_m3?.pm4_to_10 },
             
             // Diagnostics
-            'esp_temp': { sensorName: 'sensor-esp_temperature', value: data.diagnostics?.esp_temp_c },
-            'wifi_rssi': { sensorName: 'sensor-rssi', value: data.diagnostics?.wifi_rssi_dbm },
-            'uptime': { sensorName: 'sensor-uptime', value: data.diagnostics?.uptime_s },
+            'wifi_rssi_dbm': { sensorName: 'wifi_rssi_dbm', value: data.diagnostics?.wifi_rssi_dbm },
+            'uptime_s': { sensorName: 'uptime_s', value: data.diagnostics?.uptime_s },
           };
           let inserted = 0;
           let duplicates = 0;

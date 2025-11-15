@@ -49,7 +49,24 @@ The endpoint expects JSON data in the following structure:
 
 ### Required Fields
 
-- `timestamp` (string, ISO 8601 format): Timestamp of the measurement
+## Important: Server Time Usage
+
+**All readings are timestamped with server time (Date.now()) when received, regardless of the `timestamp` field in the submission.**
+
+This design choice:
+- Eliminates issues with device clock drift or timezone misconfiguration
+- Ensures consistent time handling across all data
+- Simplifies querying and aggregation
+- The device's claimed timestamp is logged for reference but not used for storage
+
+If you need accurate device-side timestamps, ensure your device's NTP is properly configured. The claimed timestamp will appear in server logs for debugging.
+
+
+- `measurements` (object): Container for sensor measurements
+
+### Optional Fields
+
+- `timestamp` (string, ISO 8601 format): Device timestamp (logged but not used - server time is used instead)
 - `measurements` (object): Container for sensor measurements
 
 ### Measurements Fields (all optional)

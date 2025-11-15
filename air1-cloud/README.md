@@ -8,17 +8,15 @@ This directory contains ESPHome configuration for the Apollo AIR-1 air quality m
 air1-cloud/
 ├── air1_cloud.yaml              # Your config (WiFi creds, HTTP posting logic)
 │       ↓ includes
-└── vendor-apollo/               # Apollo repo as git submodule
+└── vendor-apollo/               # Apollo repo via git subtree
     └── Integrations/ESPHome/
         ├── AIR-1.yaml           # Apollo's main config (esphome, logger, ota, wifi)
         │       ↓ includes
-        └── Core.yaml            # Sensor definitions
-                                 # On branch: local-with-sensor-ids
-                                 # (8 sensor IDs added via git commit)
+        └── Core.yaml            # Sensor definitions (8 IDs added in commit 09feede)
 ```
 
-**Git Strategy:**
-The `vendor-apollo/` submodule tracks a custom branch (`local-with-sensor-ids`) with Core.yaml modified to add 8 sensor IDs. AIR-1.yaml includes Core.yaml, so you get the full Apollo automation logic plus your sensor IDs.
+**Git Subtree Strategy:**
+Apollo's repo is merged into `vendor-apollo/` using `git subtree`. Your 8 sensor ID additions are tracked in your repo's history alongside your main code. You can pull Apollo updates using `git subtree pull`.
 
 ## Why This Approach?
 
@@ -30,15 +28,20 @@ The Apollo AIR-1's official ESPHome config (`Core.yaml`) defines all sensors but
 
 To get *everything* into our cloud JSON while keeping track of upstream changes, we:
 
-1. **Fork Apollo's repo in a git submodule** (`vendor-apollo/`)
-2. **Create a custom branch** (`local-with-sensor-ids`) with a single commit that adds 8 sensor IDs
-3. **Use git to manage updates**: fetch upstream → merge/rebase our branch → resolve conflicts if any
+1. **Merge Apollo's repo via git subtree** into `vendor-apollo/`
+2. **Track our 8 sensor ID additions** in regular commits alongside our main code
+3. **Pull Apollo updates** using `git subtree pull` when they release new versions
 
-**Why not ESPHome package overlays?** ESPHome doesn't support patching existing sensors - you can't add an `id:` to an already-defined sensor through package merging. Git gives us proper version control and merge tooling.
+**Why git subtree?**
+- ✅ Single repo - no submodule complexity
+- ✅ Your changes and vendor code in one history
+- ✅ Easy to clone/share (no submodule init needed)
+- ✅ Can still pull upstream updates
+- ✅ Normal git workflow for everything
 
 ## Changes From Vendor Config
 
-All changes are in one git commit in the `local-with-sensor-ids` branch. We add **only** these sensor IDs:
+All changes are in commit `09feede` (viewable with `git show 09feede`). We add **only** these sensor IDs:
 
 | Sensor | ID Added | Reason |
 |--------|----------|--------|
@@ -145,55 +148,50 @@ uvx --with pip esphome logs air1_cloud.yaml --device 192.168.x.y
 
 ## Updating From Upstream
 
-When Apollo releases a new version, use git to merge changes:
+When Apollo releases a new version, pull their changes using git subtree:
 
 ```bash
-cd air1-cloud/vendor-apollo
+# From repo root
+git subtree pull --prefix air1-cloud/vendor-apollo \
+  https://github.com/ApolloAutomation/AIR-1.git main --squash
 
-# Fetch latest from Apollo's repo
-git fetch origin main
+# Git will merge Apollo's changes with your local modifications
+# If conflicts occur, resolve them normally:
+# 1. Edit conflicting files (keep your 8 sensor IDs!)
+# 2. git add <resolved-files>
+# 3. git commit
 
-# Option 1: Rebase your changes on top of new upstream (cleaner history)
-git rebase origin/main
-# If conflicts: resolve them, then: git rebase --continue
-
-# Option 2: Merge upstream into your branch (preserves history)
-git merge origin/main
-# If conflicts: resolve them, then: git commit
-
-# Verify the changes
-git log --oneline --graph -10
-
-cd ../..
-
-# Rebuild with updated code
+# Rebuild
 cd air1-cloud
 uvx --with pip esphome run air1_cloud.yaml
 ```
 
-**If there are conflicts** (rare, since we only touch 8 lines):
-- Git will mark the conflicts in `Core.yaml`
-- Manually resolve, keeping both upstream changes AND your sensor IDs
-- Test the build afterward
+**Conflict resolution** (rare, since we only touch 8 lines):
+- If Apollo changes the same sensor sections, git will mark conflicts
+- Keep both their changes AND your `id:` additions
+- Test the build after resolving
 
 **If Apollo adds new sensors** you want in JSON:
-1. Add IDs to them in `vendor-apollo/Integrations/ESPHome/Core.yaml`
-2. Commit: `git commit -am "Add IDs for new X sensor"`
-3. Update JSON payload in `air1_cloud.yaml`
+1. Edit `air1-cloud/vendor-apollo/Integrations/ESPHome/Core.yaml`
+2. Add `id:` fields to the new sensors
+3. Commit: `git commit -am "Add IDs for new Apollo sensors"`
+4. Update JSON payload in `air1_cloud.yaml` to include new fields
 
 ## Troubleshooting
 
 ### Build fails with "ID not found"
 
-An upstream change may have renamed a sensor ID. Check what changed:
+An upstream change may have removed/renamed a sensor. Check recent changes:
 
 ```bash
-cd air1-cloud/vendor-apollo
-git log --oneline -5
-git diff HEAD~1 Integrations/ESPHome/Core.yaml
+# View recent commits affecting vendor-apollo
+git log --oneline air1-cloud/vendor-apollo/ -5
+
+# See what changed in Core.yaml
+git diff HEAD~1 air1-cloud/vendor-apollo/Integrations/ESPHome/Core.yaml
 ```
 
-Update `air1_cloud.yaml` to match the new ID.
+Update `air1_cloud.yaml` to match Apollo's new sensor IDs.
 
 ### HTTP POSTs fail
 
@@ -203,27 +201,32 @@ Update `air1_cloud.yaml` to match the new ID.
 
 ### Missing sensor data in JSON
 
-Sensor might not have an ID. Add it in the submodule:
+Sensor might not have an `id:` field. Add it:
 
 ```bash
-cd air1-cloud/vendor-apollo
-# Edit Integrations/ESPHome/Core.yaml and add id: field
-git commit -am "Add ID for XYZ sensor"
-cd ../..
+# Edit the file
+vim air1-cloud/vendor-apollo/Integrations/ESPHome/Core.yaml
+# Add id: xyz_sensor to the sensor definition
+
+# Commit
+git add air1-cloud/vendor-apollo/Integrations/ESPHome/Core.yaml
+git commit -m "Add ID for XYZ sensor"
 ```
 
 ## Files
 
 - `air1_cloud.yaml` – Main ESPHome config (WiFi, HTTP, interval posting)
-- `vendor-apollo/` – Git submodule on branch `local-with-sensor-ids` (Apollo's code + 8 sensor IDs)
+- `vendor-apollo/` – Apollo's AIR-1 repo merged via git subtree (8 sensor IDs added)
 - `README.md` – This file
 - `.gitignore` – Excludes ESPHome build artifacts
 
-**View your changes:**
+**View your sensor ID changes:**
 ```bash
-cd air1-cloud/vendor-apollo
-git log --oneline --graph
-git show HEAD  # See the sensor ID commit
+# See the commit that added sensor IDs
+git show 09feede
+
+# Or view all changes to vendor-apollo
+git log --oneline air1-cloud/vendor-apollo/
 ```
 
 ## License

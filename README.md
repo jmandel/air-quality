@@ -89,11 +89,11 @@ Example API response:
 ## API Endpoints
 
 ### Readings
+- `POST /api/submit` — **Direct submission from ESPHome devices** (see [API_SUBMIT.md](API_SUBMIT.md))
 - `POST /api/readings` — Batch ingest readings from the uploader with deduplication
 - `GET /api/readings?since=<ms>[&until=<ms>]` — Retrieve historical readings (raw or aggregated)
 - `GET /api/stream` — Server-Sent Events stream of new readings for viewers
 - `GET /api/config` — Viewer/uploader bootstrap data (e.g., default device URL)
-
 ## Database
 
 SQLite database with optimized indexes:

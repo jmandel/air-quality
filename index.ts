@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import viewerPage from "./index.html";
 import uploaderPage from "./upload.html";
 import askPage from "./ask.html";
+import testStreamPage from "./test-stream.html";
 import { SENSOR_SEED_DATA } from "./seed-data";
 import { askShelley } from "./ask-helper";
 
@@ -362,6 +363,7 @@ setInterval(() => {
 // ==================== HTTP SERVER ====================
 
 const server = serve({
+  idleTimeout: 255,
   port: PORT,
 
   routes: {
@@ -370,6 +372,7 @@ const server = serve({
     "/ask": askPage, 
     "/ask.html": askPage,
     "/upload.html": uploaderPage,
+    "/test-stream.html": testStreamPage,
     // SSE stream endpoint for remote clients
     "/api/stream": async (req) => {
       const clientId = crypto.randomUUID();
@@ -647,6 +650,21 @@ const server = serve({
 
 
 
+
+    "/api/ask/stream": {
+      async GET(req) {
+        try {
+          const { handleAskStream } = await import("./ask-stream-route");
+          return await handleAskStream(req);
+        } catch (error: any) {
+          console.error("Error in /api/ask/stream:", error);
+          return Response.json({ 
+            error: "Internal server error",
+            message: error.message 
+          }, { status: 500 });
+        }
+      }
+    },
     "/api/ask": {
       async GET(req) {
         const url = new URL(req.url);

@@ -1,6 +1,11 @@
 // API route handlers for ask history management
 
 import type { Server } from "bun";
+import { spawn } from "bun";
+import { readFile } from "fs/promises";
+import { join } from "path";
+import { existsSync } from "fs";
+import { ASKED_DIR } from "./ask-history";
 import { getHistory, getStarredItems, getHistoryMetadata, starItem, unstarItem, trashItem, untrashItem } from "./ask-history";
 
 export function handleAskApiRoute(req: Request): Response | null {
@@ -49,7 +54,7 @@ export function handleAskApiRoute(req: Request): Response | null {
       if (!id) return Response.json({ error: "Missing ID" }, { status: 400 });
       
       if (method === "GET") {
-        return handleGetItem(id);
+        return handleRerunItem(id);
       }
     }
     
@@ -115,4 +120,69 @@ async function handleGetItem(id: string): Promise<Response> {
     return Response.json({ error: "Item not found" }, { status: 404 });
   }
   return Response.json(metadata);
+}
+
+/**
+ * Re-execute a script to get fresh data
+ */
+async function handleRerunItem(id: string): Promise<Response> {
+  const metadata = await getHistoryMetadata(id);
+  if (!metadata) {
+    return Response.json({ error: "Item not found" }, { status: 404 });
+  }
+
+  // Read the script
+  const scriptPath = join(ASKED_DIR, `${id}.ts`);
+  if (!existsSync(scriptPath)) {
+    return Response.json({ error: "Script not found" }, { status: 404 });
+  }
+
+  const scriptContent = await readFile(scriptPath, 'utf-8');
+  
+  // Execute the script to get fresh data
+  try {
+    const proc = spawn([`${process.env.HOME}/.bun/bin/bun`, scriptPath], {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        PATH: `${process.env.HOME}/.bun/bin:/usr/local/bin:/usr/bin:/bin`
+      }
+    });
+
+    // Collect stdout
+    let stdout = "";
+    const reader = proc.stdout.getReader();
+    const decoder = new TextDecoder();
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      stdout += decoder.decode(value, { stream: true });
+    }
+
+    await proc.exited;
+
+    if (proc.exitCode !== 0) {
+      return Response.json({ error: "Script execution failed" }, { status: 500 });
+    }
+
+    // Parse the result
+    const answer = JSON.parse(stdout);
+    
+    return Response.json({
+      ...metadata,
+      latestAnswer: {
+        timestamp: new Date().toISOString(),
+        question: metadata.question,
+        answer
+      }
+    });
+  } catch (error: any) {
+    console.error("Error re-executing script:", error);
+    return Response.json({ 
+      error: "Failed to execute script",
+      message: error.message 
+    }, { status: 500 });
+  }
 }

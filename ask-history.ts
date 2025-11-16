@@ -3,7 +3,7 @@ import { join, basename } from "path";
 import { existsSync } from "fs";
 import type { DashboardResponse } from "./dashboard-types";
 
-const ASKED_DIR = join(import.meta.dir, "asked");
+export const ASKED_DIR = join(import.meta.dir, "asked");
 const STARRED_DIR = join(ASKED_DIR, "starred");
 const TRASHED_DIR = join(ASKED_DIR, "trashed");
 

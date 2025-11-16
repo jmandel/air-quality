@@ -346,19 +346,29 @@ async function loadHistory() {
 
 async function loadHistoryItem(id: string) {
   try {
+    // Show loading indicator
+    errorEl.classList.add("hidden");
+    dashboardEl.classList.add("hidden");
+    loadingEl.classList.remove("hidden");
+    progressEl.textContent = "Loading previous query...";
+    
     const response = await fetch(`/api/ask/item/${id}`);
     if (!response.ok) throw new Error("Failed to load history item");
     
     const item = await response.json();
     
     queryInput.value = item.question;
-    errorEl.classList.add("hidden");
     loadingEl.classList.add("hidden");
+    errorEl.classList.add("hidden");
     renderDashboard(item.latestAnswer.answer);
+    
+    // Scroll to dashboard
+    dashboardEl.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
     console.error("Failed to load history item:", err);
     errorEl.textContent = "Failed to load history item";
     errorEl.classList.remove("hidden");
+    loadingEl.classList.add("hidden");
   }
 }
 

@@ -1,9 +1,9 @@
-import { writeFile, mkdir } from "fs/promises";
+import { writeFile } from "fs/promises";
 import { join } from "path";
-import { runShelleyInSandbox, runInSandbox, createShelleyConfig } from "./bubblewrap-sandbox";
+import { streamShelleyInSandbox, runInSandbox, createShelleyConfig } from "./bubblewrap-sandbox-streaming";
 
 /**
- * Stream Shelley execution progress to the client (SANDBOXED VERSION)
+ * Stream Shelley execution progress to the client (SANDBOXED VERSION with STREAMING)
  */
 export async function* streamShelleyExecutionSandboxed(
   question: string,
@@ -21,47 +21,15 @@ export async function* streamShelleyExecutionSandboxed(
   } else {
     yield { type: "status", data: "🔒 Calling Shelley (sandboxed) to generate analysis script..." };
     
-    // Create Shelley config with fresh token
-    await createShelleyConfig(tempDir);
-    
-    // Run Shelley in sandbox
-    yield { type: "status", data: "⚡ Generating script in isolated environment..." };
-    
-    const shelleyResult = await runShelleyInSandbox(prompt, tempDir, 180000);
-    
-    if (shelleyResult.exitCode !== 0) {
-      yield { type: "error", data: { message: `Shelley failed: ${shelleyResult.stderr}` } };
-      throw new Error(`Shelley failed with exit code ${shelleyResult.exitCode}`);
+    // Stream Shelley execution in real-time
+    try {
+      for await (const event of streamShelleyInSandbox(prompt, tempDir, 180000)) {
+        yield event;
+      }
+    } catch (e: any) {
+      yield { type: "error", data: { message: `Shelley failed: ${e.message}` } };
+      throw e;
     }
-    
-    // Parse stdout for interesting messages
-    const lines = shelleyResult.stdout.split('\n');
-    let inConversation = false;
-    
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      
-      // Skip structured log lines
-      if (trimmed.match(/^time=.*level=.*msg=/)) continue;
-      
-      // Detect conversation boundaries
-      if (trimmed.match(/^Created conversation:/)) {
-        inConversation = true;
-        continue;
-      }
-      if (trimmed.match(/^(Conversation completed|To continue:)/)) {
-        inConversation = false;
-        continue;
-      }
-      
-      // Stream conversation messages
-      if (inConversation && trimmed.match(/^[👤🤖🔧]/)) {
-        yield { type: "shelley_progress", data: trimmed };
-      }
-    }
-    
-    yield { type: "shelley_complete", data: { exitCode: 0 } };
     
     // Check if script was created
     const scriptExists = await Bun.file(analyzePath).exists();

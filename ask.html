@@ -440,6 +440,74 @@
     .hidden {
       display: none;
     }
+    
+    /* Result tabs */
+    .result-tabs {
+      width: 100%;
+    }
+    
+    .tab-buttons {
+      display: flex;
+      gap: 0.5rem;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 1.5rem;
+    }
+    
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 0.75rem 1.5rem;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s;
+      margin-bottom: -2px;
+    }
+    
+    .tab-btn:hover {
+      color: var(--text);
+      background: var(--surface-alt);
+    }
+    
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    
+    .tab-content {
+      min-height: 300px;
+    }
+    
+    .tab-pane {
+      display: none;
+    }
+    
+    .tab-pane.active {
+      display: block;
+      animation: fadeIn 0.2s;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    .code-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      overflow-x: auto;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: var(--text);
+      white-space: pre;
+      max-height: 600px;
+      overflow-y: auto;
+    }
   </style>
 </head>
 <body>

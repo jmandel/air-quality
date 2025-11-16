@@ -134,9 +134,12 @@ Now write analyze.ts to ${analyzePath} that answers: "${query}"`;
             finalScriptContent = event.data.scriptContent;
           }
         }
-        
         // Save to history
         if (dashboardResult && finalScriptContent) {
+          // Send script content as separate event for UI display
+          const scriptEvent = `event: script\ndata: ${JSON.stringify({ content: finalScriptContent })}\n\n`;
+          controller.enqueue(new TextEncoder().encode(scriptEvent));
+          
           const conversationId = `cli-${Date.now()}`;
           const historyId = await saveToHistory(
             actualQuery || query,

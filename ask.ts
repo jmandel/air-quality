@@ -119,6 +119,15 @@ function askQuestion(query: string) {
   eventSource.addEventListener("result", (e: any) => {
     dashboardResult = JSON.parse(e.data);
   });
+
+  eventSource.addEventListener("script", (e: any) => {
+    const data = JSON.parse(e.data);
+    currentScriptContent = data.content;
+    const scriptPane = document.getElementById("tab-script");
+    if (scriptPane) {
+      scriptPane.innerHTML = `<pre class="code-block">${escapeHtml(currentScriptContent)}</pre>`;
+    }
+  });
   
   eventSource.addEventListener("saved", (e: any) => {
     progressEl.textContent += "💾 Saved to history\n";
@@ -165,7 +174,20 @@ function askQuestion(query: string) {
 }
 
 function renderDashboard(answer: DashboardResponse) {
-  let html = "";
+  // Store the raw JSON for the JSON tab
+  currentResultJson = answer;
+  
+  // Create tab container
+  let html = `
+    <div class="result-tabs">
+      <div class="tab-buttons">
+        <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
+        <button class="tab-btn" data-tab="json">📋 JSON</button>
+        <button class="tab-btn" data-tab="script">💻 Script</button>
+      </div>
+      <div class="tab-content">
+        <div class="tab-pane active" id="tab-dashboard">
+  `;
 
   // Render summary
   if (answer.summary) {
@@ -184,10 +206,38 @@ function renderDashboard(answer: DashboardResponse) {
     }
     html += "</div>";
   }
+  
+  html += `
+        </div>
+        <div class="tab-pane" id="tab-json">
+          <pre class="code-block">${escapeHtml(JSON.stringify(answer, null, 2))}</pre>
+        </div>
+        <div class="tab-pane" id="tab-script">
+          <pre class="code-block">${currentScriptContent ? escapeHtml(currentScriptContent) : 'Loading script...'}</pre>
+        </div>
+      </div>
+    </div>
+  `;
 
   dashboardEl.innerHTML = html;
   dashboardEl.classList.remove("hidden");
-
+  
+  // Attach tab click handlers
+  dashboardEl.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabName = btn.getAttribute('data-tab');
+      
+      // Update active button
+      dashboardEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      
+      // Update active pane
+      dashboardEl.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      const pane = dashboardEl.querySelector(`#tab-${tabName}`);
+      if (pane) pane.classList.add('active');
+    });
+  });
+  
   // Render any charts after DOM is ready
   setTimeout(() => {
     answer.blocks?.forEach((block, index) => {
@@ -540,6 +590,15 @@ async function loadHistoryItem(id: string) {
     eventSource.addEventListener("result", (e: any) => {
       dashboardResult = JSON.parse(e.data);
     });
+
+  eventSource.addEventListener("script", (e: any) => {
+    const data = JSON.parse(e.data);
+    currentScriptContent = data.content;
+    const scriptPane = document.getElementById("tab-script");
+    if (scriptPane) {
+      scriptPane.innerHTML = `<pre class="code-block">${escapeHtml(currentScriptContent)}</pre>`;
+    }
+  });
     
     eventSource.addEventListener("saved", (e: any) => {
       progressEl.textContent += "✅ Execution complete\n";

@@ -36,3 +36,4 @@ ask-helper-update.txt
 index-addition.txt
 start-server.sh
 *.broken
+ask-stream-client.ts

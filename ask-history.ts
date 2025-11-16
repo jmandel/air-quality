@@ -136,9 +136,12 @@ export async function getHistory(options: {
     if (options.starred !== undefined && starred !== options.starred) continue;
     if (options.trashed !== undefined && trashed !== options.trashed) continue;
     
+    // Handle both old format (timestamp) and new format (lastRun)
+    const effectiveTimestamp = metadata.lastRun || (metadata as any).timestamp || new Date().toISOString();
+    
     items.push({
       id,
-      timestamp: metadata.lastRun, // Use last run for sorting
+      timestamp: effectiveTimestamp,
       question: metadata.question,
       starred,
       trashed,
@@ -150,7 +153,7 @@ export async function getHistory(options: {
   }
   
   // Sort by last run descending (most recent first)
-  items.sort((a, b) => (b.lastRun || b.timestamp).localeCompare(a.lastRun || a.timestamp));
+  items.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   
   // Apply limit
   if (options.limit) {

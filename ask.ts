@@ -266,7 +266,7 @@ async function loadHistory() {
     const response = await fetch("/api/ask/history");
     if (!response.ok) throw new Error("Failed to load history");
     
-    const history = await response.json();
+    const {items: history} = await response.json();
     
     if (history.length === 0) {
       historyCatalogEl.classList.add("hidden");

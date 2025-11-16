@@ -2,257 +2,344 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Ask About Your Air Quality</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.0/marked.min.js"></script>
   <style>
     :root {
+      color-scheme: light dark;
       --bg: #0f172a;
-      --surface: #1e293b;
-      --border: #475569;
-      --text: #f1f5f9;
+      --surface: #15213a;
+      --surface-alt: #1c2a47;
+      --border: #223352;
+      --text: #f8fafc;
       --muted: #94a3b8;
-      --accent: #3b82f6;
-      --warning: #f59e0b;
-      --error: #ef4444;
+      --accent: #38bdf8;
+      --danger: #f97316;
       --success: #22c55e;
+      --warning: #f59e0b;
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
       background: var(--bg);
       color: var(--text);
-      padding: 2rem;
-      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
-    
-    .container { max-width: 1400px; margin: 0 auto; }
-    
-    h1 { font-size: 2rem; margin-bottom: 0.5rem; }
-    
-    .subtitle { color: var(--muted); margin-bottom: 2rem; }
-    
+
+    .top-bar {
+      padding: 24px clamp(16px, 5vw, 48px);
+      background: linear-gradient(135deg, var(--surface), var(--surface-alt));
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .title h1 {
+      margin: 0;
+      font-size: clamp(24px, 4vw, 32px);
+    }
+
+    .title .subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .back-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+      transition: opacity 0.2s;
+    }
+
+    .back-link:hover {
+      opacity: 0.8;
+    }
+
+    .content {
+      flex: 1;
+      padding: clamp(16px, 5vw, 48px);
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
     .query-box {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
-    }
-    
-    .input-group {
+      border-radius: 16px;
+      padding: 24px;
       display: flex;
-      gap: 1rem;
-      margin-bottom: 1rem;
+      flex-direction: column;
+      gap: 16px;
     }
-    
-    input[type="text"] {
+
+    .input-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .query-input {
       flex: 1;
       background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.75rem 1rem;
+      border-radius: 12px;
+      padding: 12px 16px;
       color: var(--text);
-      font-size: 1rem;
+      font-size: 16px;
+      font-family: inherit;
     }
-    
-    button {
+
+    .query-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .ask-btn {
       background: var(--accent);
-      color: white;
+      color: var(--bg);
       border: none;
-      border-radius: 8px;
-      padding: 0.75rem 1.5rem;
-      font-size: 1rem;
+      border-radius: 12px;
+      padding: 12px 32px;
+      font-size: 16px;
       font-weight: 600;
       cursor: pointer;
       transition: opacity 0.2s;
     }
-    
-    button:hover { opacity: 0.9; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    
+
+    .ask-btn:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+
+    .ask-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
     .examples {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.5rem;
+      gap: 8px;
     }
-    
+
     .example-chip {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.4rem 0.8rem;
-      font-size: 0.875rem;
+      background: rgba(148, 163, 184, 0.12);
+      border: 1px solid rgba(148, 163, 184, 0.2);
       color: var(--muted);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 13px;
       cursor: pointer;
       transition: all 0.2s;
     }
-    
+
     .example-chip:hover {
-      border-color: var(--accent);
+      background: rgba(56, 189, 248, 0.15);
+      border-color: rgba(56, 189, 248, 0.4);
       color: var(--accent);
     }
-    
+
+    .loading {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--muted);
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 48px;
+      height: 48px;
+      border: 4px solid rgba(148, 163, 184, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error-box {
+      background: rgba(249, 115, 22, 0.1);
+      border: 1px solid rgba(249, 115, 22, 0.3);
+      border-left: 4px solid var(--danger);
+      border-radius: 12px;
+      padding: 20px;
+      color: var(--danger);
+    }
+
     .dashboard {
-      display: none;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
     }
-    
-    .dashboard.visible {
-      display: block;
-    }
-    
+
     .summary {
       background: var(--surface);
       border-left: 4px solid var(--accent);
-      border-radius: 8px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
-      font-size: 1.1rem;
+      border-radius: 12px;
+      padding: 20px;
+      font-size: 16px;
+      line-height: 1.6;
     }
-    
+
     .tiles {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-      gap: 1.5rem;
-      margin-bottom: 2rem;
+      gap: 24px;
     }
-    
+
     .tile {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
+      border-radius: 16px;
+      padding: 24px;
       transition: transform 0.2s;
     }
-    
+
     .tile:hover {
       transform: translateY(-2px);
     }
-    
+
     .tile-title {
-      font-size: 0.875rem;
+      font-size: 13px;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.08em;
       color: var(--muted);
-      margin-bottom: 1rem;
+      margin-bottom: 16px;
     }
-    
-    /* TEXT TILE */
+
+    /* Text tile variants */
     .tile.text-info { border-left: 4px solid var(--accent); }
     .tile.text-warning { border-left: 4px solid var(--warning); }
     .tile.text-success { border-left: 4px solid var(--success); }
-    .tile.text-error { border-left: 4px solid var(--error); }
-    
-    .text-content { line-height: 1.6; }
-    .text-content p { margin-bottom: 0.75rem; }
-    .text-content strong { color: var(--accent); }
-    
-    /* METRIC TILE */
-    .tile.metric { text-align: center; }
-    
-    .tile.metric.good { background: linear-gradient(135deg, #064e3b 0%, var(--surface) 100%); }
-    .tile.metric.warning { background: linear-gradient(135deg, #78350f 0%, var(--surface) 100%); }
-    .tile.metric.critical { background: linear-gradient(135deg, #7f1d1d 0%, var(--surface) 100%); }
-    
+    .tile.text-error { border-left: 4px solid var(--danger); }
+
+    .text-content {
+      line-height: 1.6;
+    }
+
+    .text-content p {
+      margin: 0 0 12px;
+    }
+
+    .text-content p:last-child {
+      margin-bottom: 0;
+    }
+
+    .text-content strong {
+      color: var(--accent);
+    }
+
+    /* Metric tile */
+    .tile.metric {
+      text-align: center;
+    }
+
+    .tile.metric.good {
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, var(--surface) 100%);
+    }
+
+    .tile.metric.warning {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, var(--surface) 100%);
+    }
+
+    .tile.metric.critical {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, var(--surface) 100%);
+    }
+
     .metric-value {
-      font-size: 3.5rem;
+      font-size: 56px;
       font-weight: 700;
       line-height: 1;
-      margin: 1rem 0;
+      margin: 16px 0;
     }
-    
+
     .metric-unit {
-      font-size: 1.5rem;
+      font-size: 24px;
       color: var(--muted);
-      margin-left: 0.5rem;
+      margin-left: 8px;
     }
-    
+
     .metric-trend {
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
-      margin-top: 1rem;
-      padding: 0.5rem 1rem;
+      gap: 8px;
+      margin-top: 16px;
+      padding: 8px 16px;
       background: rgba(0, 0, 0, 0.2);
-      border-radius: 6px;
-      font-size: 0.875rem;
+      border-radius: 999px;
+      font-size: 14px;
     }
-    
+
     .trend-arrow {
-      font-size: 1.25rem;
+      font-size: 20px;
     }
-    
-    .trend-arrow.up { color: var(--error); }
+
+    .trend-arrow.up { color: var(--danger); }
     .trend-arrow.down { color: var(--success); }
     .trend-arrow.stable { color: var(--muted); }
-    
-    /* CHART TILE */
+
+    /* Chart tile */
     .tile.chart {
       grid-column: span 2;
       min-height: 400px;
     }
-    
+
     @media (max-width: 1200px) {
       .tile.chart {
         grid-column: span 1;
       }
     }
-    
+
     .chart-container {
       position: relative;
       height: 350px;
-      margin-top: 1rem;
+      margin-top: 16px;
     }
-    
-    .loading {
-      text-align: center;
-      padding: 2rem;
-      color: var(--muted);
-    }
-    
-    .spinner {
-      display: inline-block;
-      width: 40px;
-      height: 40px;
-      border: 4px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    
-    .error-message {
-      background: var(--surface);
-      border-left: 4px solid var(--error);
-      border-radius: 8px;
-      padding: 1.5rem;
-      color: var(--error);
+
+    .hidden {
+      display: none;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>🤖 Ask About Your Air Quality</h1>
-    <p class="subtitle">Ask natural language questions and get interactive dashboard answers</p>
-    
+  <div class="top-bar">
+    <div class="title">
+      <h1>🤖 Ask About Your Air Quality</h1>
+      <p class="subtitle">Natural language queries with interactive dashboards</p>
+    </div>
+    <a href="/" class="back-link">← Back to Viewer</a>
+  </div>
+
+  <div class="content">
     <div class="query-box">
-      <div class="input-group">
+      <div class="input-row">
         <input 
           type="text" 
-          id="queryInput" 
-          placeholder="What is the current CO₂ level?" 
+          id="query-input"
+          class="query-input"
+          placeholder="What is the current CO₂ level?"
           autocomplete="off"
         />
-        <button id="askButton">Ask</button>
+        <button id="ask-btn" class="ask-btn">Ask</button>
       </div>
-      
+
       <div class="examples">
         <span class="example-chip" data-query="What is the current CO₂ level?">Current CO₂</span>
         <span class="example-chip" data-query="Is the air quality good right now?">Air quality status</span>
@@ -261,250 +348,17 @@
         <span class="example-chip" data-query="Compare CO₂ now vs 1 hour ago">Compare CO₂</span>
       </div>
     </div>
-    
-    <div id="loading" class="loading" style="display: none;">
+
+    <div id="loading" class="loading hidden">
       <div class="spinner"></div>
       <p>Analyzing data...</p>
     </div>
-    
-    <div id="error" class="error-message" style="display: none;"></div>
-    
-    <div id="dashboard" class="dashboard"></div>
+
+    <div id="error" class="error-box hidden"></div>
+
+    <div id="dashboard" class="dashboard hidden"></div>
   </div>
-  
-  <script>
-    const queryInput = document.getElementById('queryInput');
-    const askButton = document.getElementById('askButton');
-    const loading = document.getElementById('loading');
-    const errorDiv = document.getElementById('error');
-    const dashboard = document.getElementById('dashboard');
-    
-    // Example chip click handlers
-    document.querySelectorAll('.example-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        queryInput.value = chip.dataset.query;
-        askQuestion();
-      });
-    });
-    
-    // Enter key handler
-    queryInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') askQuestion();
-    });
-    
-    // Ask button handler
-    askButton.addEventListener('click', askQuestion);
-    
-    async function askQuestion() {
-      const query = queryInput.value.trim();
-      if (!query) return;
-      
-      // Show loading, hide previous results
-      loading.style.display = 'block';
-      errorDiv.style.display = 'none';
-      dashboard.style.display = 'none';
-      dashboard.innerHTML = '';
-      askButton.disabled = true;
-      
-      try {
-        const response = await fetch(`/api/ask?q=${encodeURIComponent(query)}`);
-        const data = await response.json();
-        
-        if (!response.ok) {
-          throw new Error(data.error || 'Request failed');
-        }
-        
-        renderDashboard(data.answer);
-        
-      } catch (error) {
-        errorDiv.textContent = `Error: ${error.message}`;
-        errorDiv.style.display = 'block';
-      } finally {
-        loading.style.display = 'none';
-        askButton.disabled = false;
-      }
-    }
-    
-    function renderDashboard(answer) {
-      // Handle plain text answers
-      if (typeof answer === 'string') {
-        dashboard.innerHTML = `
-          <div class="tile text-info">
-            <div class="tile-title">Response</div>
-            <div class="text-content">${marked.parse(answer)}</div>
-          </div>
-        `;
-        dashboard.style.display = 'block';
-        return;
-      }
-      
-      // Handle dashboard responses
-      let html = '';
-      
-      // Summary
-      if (answer.summary) {
-        html += `<div class="summary">${marked.parse(answer.summary)}</div>`;
-      }
-      
-      // Tiles
-      html += '<div class="tiles">';
-      
-      for (const block of answer.blocks) {
-        if (block.type === 'text') {
-          html += renderTextTile(block);
-        } else if (block.type === 'metric') {
-          html += renderMetricTile(block);
-        } else if (block.type === 'chart') {
-          html += renderChartTile(block);
-        }
-      }
-      
-      html += '</div>';
-      
-      dashboard.innerHTML = html;
-      dashboard.style.display = 'block';
-      
-      // Render charts after DOM is ready
-      setTimeout(renderAllCharts, 0);
-    }
-    
-    function renderTextTile(block) {
-      const variant = block.variant || 'info';
-      const title = block.title ? `<div class="tile-title">${block.title}</div>` : '';
-      return `
-        <div class="tile text-${variant}">
-          ${title}
-          <div class="text-content">${marked.parse(block.content)}</div>
-        </div>
-      `;
-    }
-    
-    function renderMetricTile(block) {
-      const status = block.status || '';
-      const statusClass = status ? `metric ${status}` : 'metric';
-      const trend = block.trend ? renderTrend(block.trend) : '';
-      
-      return `
-        <div class="tile ${statusClass}">
-          <div class="tile-title">${block.title}</div>
-          <div class="metric-value">
-            ${block.value.toLocaleString()}
-            <span class="metric-unit">${block.unit}</span>
-          </div>
-          ${trend}
-        </div>
-      `;
-    }
-    
-    function renderTrend(trend) {
-      const arrows = {
-        up: '↑',
-        down: '↓',
-        stable: '→'
-      };
-      
-      const percentage = trend.percentage 
-        ? `${trend.direction === 'down' ? '-' : '+'}${trend.percentage.toFixed(1)}%`
-        : '';
-      
-      return `
-        <div class="metric-trend">
-          <span class="trend-arrow ${trend.direction}">${arrows[trend.direction]}</span>
-          ${percentage}
-          ${trend.period ? `<span>${trend.period}</span>` : ''}
-        </div>
-      `;
-    }
-    
-    function renderChartTile(block) {
-      const chartId = `chart-${Math.random().toString(36).substr(2, 9)}`;
-      return `
-        <div class="tile chart" data-chart='${JSON.stringify(block)}'>
-          <div class="tile-title">${block.title}</div>
-          <div class="chart-container">
-            <canvas id="${chartId}"></canvas>
-          </div>
-        </div>
-      `;
-    }
-    
-    function renderAllCharts() {
-      document.querySelectorAll('.tile.chart').forEach(tile => {
-        const chartData = JSON.parse(tile.dataset.chart);
-        const canvas = tile.querySelector('canvas');
-        
-        // Prepare datasets
-        const datasets = chartData.series.map(series => ({
-          label: series.name,
-          data: series.data.map(d => ({ x: d.x, y: d.y })),
-          borderColor: series.color || '#3b82f6',
-          backgroundColor: series.color ? `${series.color}33` : '#3b82f633',
-          borderWidth: 3,
-          tension: 0.4,
-          fill: chartData.chartType === 'area'
-        }));
-        
-        // Prepare annotations
-        const annotations = {};
-        if (chartData.annotations) {
-          chartData.annotations.forEach((ann, i) => {
-            annotations[`line${i}`] = {
-              type: 'line',
-              yMin: ann.value,
-              yMax: ann.value,
-              borderColor: ann.color || '#f59e0b',
-              borderWidth: 2,
-              borderDash: [5, 5],
-              label: {
-                display: true,
-                content: ann.label,
-                position: 'start'
-              }
-            };
-          });
-        }
-        
-        new Chart(canvas, {
-          type: chartData.chartType === 'bar' ? 'bar' : 'line',
-          data: { datasets },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                labels: { color: '#f1f5f9' }
-              },
-              annotation: {
-                annotations
-              }
-            },
-            scales: {
-              x: {
-                type: chartData.xAxis.type === 'time' ? 'time' : 'category',
-                title: {
-                  display: true,
-                  text: chartData.xAxis.label,
-                  color: '#94a3b8'
-                },
-                ticks: { color: '#94a3b8' },
-                grid: { color: '#475569' }
-              },
-              y: {
-                title: {
-                  display: true,
-                  text: chartData.yAxis.label + (chartData.yAxis.unit ? ` (${chartData.yAxis.unit})` : ''),
-                  color: '#94a3b8'
-                },
-                min: chartData.yAxis.min,
-                max: chartData.yAxis.max,
-                ticks: { color: '#94a3b8' },
-                grid: { color: '#475569' }
-              }
-            }
-          }
-        });
-      });
-    }
-  </script>
+
+  <script type="module" src="./ask.ts"></script>
 </body>
 </html>

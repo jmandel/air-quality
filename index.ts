@@ -2,6 +2,7 @@ import { serve } from "bun";
 import { Database } from "bun:sqlite";
 import viewerPage from "./index.html";
 import uploaderPage from "./upload.html";
+import askPage from "./ask.html";
 import { SENSOR_SEED_DATA } from "./seed-data";
 import { askShelley } from "./ask-helper";
 
@@ -366,8 +367,8 @@ const server = serve({
   routes: {
     "/": viewerPage,
     "/upload": uploaderPage,
-    "/ask": async () => new Response(Bun.file("ask.html")), 
-    "/ask.html": async () => new Response(Bun.file("ask.html")),
+    "/ask": askPage, 
+    "/ask.html": askPage,
     "/upload.html": uploaderPage,
     // SSE stream endpoint for remote clients
     "/api/stream": async (req) => {

@@ -67,6 +67,19 @@ The script MUST:
 3. Output ONLY valid JSON to stdout (use console.log())
 4. Follow the EXACT DashboardResponse schema below
 
+IMPORTANT - WRITE REUSABLE SCRIPTS:
+- If the question mentions "today", "now", "current", or relative times: Calculate these INSIDE the script using Date.now()
+- DO NOT hardcode timestamps - scripts are re-executed to get fresh data
+- Scripts should produce correct results whenever they run, not just at generation time
+- Example: For "today's peak", use: const startOfToday = new Date().setHours(0,0,0,0)
+
+EXAMPLE - BAD (hardcoded):
+  const today = 1763308454049; // ❌ Will be wrong when re-run tomorrow
+
+EXAMPLE - GOOD (calculated):
+  const now = Date.now();
+  const today = new Date().setHours(0, 0, 0, 0); // ✅ Always correct
+
 REQUIRED OUTPUT SCHEMA:
 
 ${dashboardTypesSource}

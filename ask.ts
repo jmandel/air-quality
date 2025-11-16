@@ -251,25 +251,77 @@ function renderChart(elementId: string, block: any) {
     return;
   }
 
+  const Chart = (window as any).Chart;
+
   // Convert our data format to Chart.js format
   const datasets = block.series.map((s: any) => ({
     label: s.name,
     data: s.data.map((d: any) => ({ x: d.x, y: d.y })),
     borderColor: s.color || "#3b82f6",
     backgroundColor: s.color ? `${s.color}33` : "#3b82f633",
-    tension: 0.3,
+    borderWidth: 3,  // Thicker lines
+    pointRadius: 0,  // No dots on line
+    pointHoverRadius: 6,  // Show dot on hover
+    tension: 0.2,  // Less smoothing for punchier look
+    fill: block.chartType === "area",
   }));
 
-  new (window as any).Chart(canvas, {
-    type: block.chartType || "line",
+  // Build annotations from threshold lines
+  const annotations: any = {};
+  if (block.annotations && block.annotations.length > 0) {
+    block.annotations.forEach((ann: any, idx: number) => {
+      if (ann.type === "threshold") {
+        annotations[`line${idx}`] = {
+          type: "line",
+          yMin: ann.value,
+          yMax: ann.value,
+          borderColor: ann.color || "#ef4444",
+          borderWidth: 2,
+          borderDash: [8, 4],
+          label: {
+            display: true,
+            content: ann.label,
+            position: "end",
+            backgroundColor: ann.color || "#ef4444",
+            color: "#fff",
+            font: {
+              size: 12,
+              weight: "bold",
+            },
+            padding: 6,
+          },
+        };
+      }
+    });
+  }
+
+  new Chart(canvas, {
+    type: block.chartType === "area" ? "line" : (block.chartType || "line"),
     data: { datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,  // NO ANIMATIONS
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
       plugins: {
         legend: {
           display: true,
           position: "bottom",
+          labels: {
+            font: {
+              size: 14,
+              weight: "bold",
+            },
+            color: "#f8fafc",
+            padding: 16,
+            usePointStyle: true,
+          },
+        },
+        annotation: {
+          annotations,
         },
       },
       scales: {
@@ -278,6 +330,25 @@ function renderChart(elementId: string, block: any) {
           title: {
             display: true,
             text: block.xAxis.label,
+            font: {
+              size: 16,
+              weight: "bold",
+            },
+            color: "#f8fafc",
+            padding: { top: 12 },
+          },
+          ticks: {
+            font: {
+              size: 13,
+              weight: "500",
+            },
+            color: "#cbd5e1",
+            maxRotation: 0,
+            autoSkipPadding: 20,
+          },
+          grid: {
+            color: "#223352",
+            lineWidth: 1,
           },
           time: block.xAxis.type === "time" ? {
             displayFormats: {
@@ -290,6 +361,24 @@ function renderChart(elementId: string, block: any) {
           title: {
             display: true,
             text: block.yAxis.unit ? `${block.yAxis.label} (${block.yAxis.unit})` : block.yAxis.label,
+            font: {
+              size: 16,
+              weight: "bold",
+            },
+            color: "#f8fafc",
+            padding: { bottom: 12 },
+          },
+          ticks: {
+            font: {
+              size: 13,
+              weight: "500",
+            },
+            color: "#cbd5e1",
+            padding: 10,
+          },
+          grid: {
+            color: "#223352",
+            lineWidth: 1,
           },
           min: block.yAxis.min,
           max: block.yAxis.max,
@@ -298,6 +387,7 @@ function renderChart(elementId: string, block: any) {
     },
   });
 }
+
 async function loadHistory() {
   try {
     const response = await fetch("/api/ask/history");

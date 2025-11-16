@@ -42,7 +42,28 @@ queryInput.addEventListener("keypress", (e) => {
   }
 });
 
+// Check URL for query parameter on page load
+const urlParams = new URLSearchParams(window.location.search);
+const urlQuery = urlParams.get('q');
+if (urlQuery) {
+  queryInput.value = urlQuery;
+  askQuestion(urlQuery);
+}
+
+// Handle browser back/forward
+window.addEventListener('popstate', (e) => {
+  if (e.state && e.state.query) {
+    queryInput.value = e.state.query;
+    askQuestion(e.state.query);
+  }
+});
+
 function askQuestion(query: string) {
+  // Update URL with query parameter (for sharing/bookmarking)
+  const url = new URL(window.location.href);
+  url.searchParams.set('q', query);
+  window.history.pushState({ query }, '', url);
+  
   // Reset UI
   errorEl.classList.add("hidden");
   dashboardEl.classList.add("hidden");
@@ -485,6 +506,11 @@ async function loadHistoryItem(id: string) {
     const item = await response.json();
     
     queryInput.value = item.question;
+    
+    // Update URL with query parameter
+    const url = new URL(window.location.href);
+    url.searchParams.set('q', item.question);
+    window.history.pushState({ query: item.question }, '', url);
     loadingEl.classList.add("hidden");
     errorEl.classList.add("hidden");
     renderDashboard(item.latestAnswer.answer);

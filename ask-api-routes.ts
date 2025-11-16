@@ -139,36 +139,28 @@ async function handleRerunItem(id: string): Promise<Response> {
 
   const scriptContent = await readFile(scriptPath, 'utf-8');
   
-  // Execute the script to get fresh data
+  // Execute the script to get fresh data (SANDBOXED)
   try {
-    const proc = spawn([`${process.env.HOME}/.bun/bin/bun`, scriptPath], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...process.env,
-        PATH: `${process.env.HOME}/.bun/bin:/usr/local/bin:/usr/bin:/bin`
-      }
+    const { runInSandbox } = await import("./bubblewrap-sandbox-streaming");
+    
+    const result = await runInSandbox({
+      scriptPath: scriptPath,
+      dbPath: "/home/exedev/app/db.sqlite",
+      workDir: ASKED_DIR,
+      timeoutMs: 30000,
+      allowNetwork: false
     });
 
-    // Collect stdout
-    let stdout = "";
-    const reader = proc.stdout.getReader();
-    const decoder = new TextDecoder();
-    
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      stdout += decoder.decode(value, { stream: true });
-    }
-
-    await proc.exited;
-
-    if (proc.exitCode !== 0) {
-      return Response.json({ error: "Script execution failed" }, { status: 500 });
+    if (result.exitCode !== 0) {
+      console.error("Script execution failed:", result.stderr);
+      return Response.json({ 
+        error: "Script execution failed",
+        details: result.stderr 
+      }, { status: 500 });
     }
 
     // Parse the result
-    const answer = JSON.parse(stdout);
+    const answer = JSON.parse(result.stdout.trim());
     
     return Response.json({
       ...metadata,

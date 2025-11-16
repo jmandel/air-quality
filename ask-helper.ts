@@ -259,7 +259,7 @@ Now write analyze.ts to ${analyzePath} that answers: "${question}"`;
   
   // Save to history
   const conversationId = `cli-${Date.now()}`;
-  const historyId = await saveToHistory(question, dashboardResponse, conversationId, scriptContent);
+  const historyId = await saveToHistory(question, dashboardResponse, conversationId, scriptContent, usedCachedScript);
   console.log(`💾 Saved to history: ${historyId} ${usedCachedScript ? '(reused script)' : '(new script)'}`);
   
   // Clean up temp directory

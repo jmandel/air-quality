@@ -20,41 +20,89 @@ export interface AskHistoryItem {
   trashed: boolean;
   scriptPath: string;
   metadataPath: string;
+  runCount: number;
+  lastRun: string;
 }
 
 interface AskMetadata {
   id: string;
-  timestamp: string;
   question: string;
-  answer: DashboardResponse | string;
-  conversationId: string;
+  firstAsked: string;
+  lastRun: string;
+  runCount: number;
+  runs: Array<{
+    timestamp: string;
+    conversationId: string;
+    usedCachedScript?: boolean;
+  }>;
 }
 
 /**
- * Save a query and its results to the history
+ * Generate a stable ID for a question (based on slugified question only)
+ */
+function generateQuestionId(question: string): string {
+  return slugify(question);
+}
+
+/**
+ * Save or update a query and its results to the history
  */
 export async function saveToHistory(
   question: string,
   answer: DashboardResponse | string,
   conversationId: string,
-  scriptContent: string
+  scriptContent: string,
+  usedCachedScript?: boolean
 ): Promise<string> {
+  const id = generateQuestionId(question);
   const timestamp = new Date().toISOString();
-  const id = `${timestamp.replace(/:/g, '-').replace(/\./g, '-')}_${slugify(question)}`;
   
   const metadataPath = join(ASKED_DIR, `${id}.json`);
   const scriptPath = join(ASKED_DIR, `${id}.ts`);
+  const answerPath = join(ASKED_DIR, `${id}-latest.json`);
   
-  const metadata: AskMetadata = {
-    id,
+  let metadata: AskMetadata;
+  
+  // Check if this question already exists
+  if (existsSync(metadataPath)) {
+    // Update existing
+    const existing = JSON.parse(await readFile(metadataPath, 'utf-8')) as AskMetadata;
+    metadata = {
+      ...existing,
+      lastRun: timestamp,
+      runCount: existing.runCount + 1,
+      runs: [
+        ...existing.runs,
+        { timestamp, conversationId, usedCachedScript }
+      ]
+    };
+    console.log(`📝 Updated existing question (run #${metadata.runCount})`);
+  } else {
+    // Create new
+    metadata = {
+      id,
+      question,
+      firstAsked: timestamp,
+      lastRun: timestamp,
+      runCount: 1,
+      runs: [{ timestamp, conversationId, usedCachedScript }]
+    };
+    console.log(`📝 Created new question entry`);
+  }
+  
+  // Save metadata
+  await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+  
+  // Save/update script
+  await writeFile(scriptPath, scriptContent);
+  
+  // Save latest answer
+  await writeFile(answerPath, JSON.stringify({
     timestamp,
     question,
     answer,
     conversationId
-  };
-  
-  await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
-  await writeFile(scriptPath, scriptContent);
+  }, null, 2));
   
   return id;
 }
@@ -68,7 +116,7 @@ export async function getHistory(options: {
   trashed?: boolean;
 } = {}): Promise<AskHistoryItem[]> {
   const files = await readdir(ASKED_DIR);
-  const metadataFiles = files.filter(f => f.endsWith('.json'));
+  const metadataFiles = files.filter(f => f.endsWith('.json') && !f.endsWith('-latest.json'));
   
   const items: AskHistoryItem[] = [];
   
@@ -90,17 +138,19 @@ export async function getHistory(options: {
     
     items.push({
       id,
-      timestamp: metadata.timestamp,
+      timestamp: metadata.lastRun, // Use last run for sorting
       question: metadata.question,
       starred,
       trashed,
       scriptPath: join(ASKED_DIR, `${id}.ts`),
-      metadataPath
+      metadataPath,
+      runCount: metadata.runCount,
+      lastRun: metadata.lastRun
     });
   }
   
-  // Sort by timestamp descending (newest first)
-  items.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  // Sort by last run descending (most recent first)
+  items.sort((a, b) => (b.lastRun || b.timestamp).localeCompare(a.lastRun || a.timestamp));
   
   // Apply limit
   if (options.limit) {
@@ -128,27 +178,40 @@ export async function getHistoryItem(id: string): Promise<AskHistoryItem | null>
   
   return {
     id: metadata.id,
-    timestamp: metadata.timestamp,
+    timestamp: metadata.lastRun,
     question: metadata.question,
     starred: existsSync(starredPath),
     trashed: existsSync(trashedPath),
     scriptPath: join(ASKED_DIR, `${id}.ts`),
-    metadataPath
+    metadataPath,
+    runCount: metadata.runCount,
+    lastRun: metadata.lastRun
   };
 }
 
 /**
- * Get full metadata including answer
+ * Get full metadata including answer and runs
  */
-export async function getHistoryMetadata(id: string): Promise<AskMetadata | null> {
+export async function getHistoryMetadata(id: string): Promise<any | null> {
   const metadataPath = join(ASKED_DIR, `${id}.json`);
+  const answerPath = join(ASKED_DIR, `${id}-latest.json`);
   
   if (!existsSync(metadataPath)) {
     return null;
   }
   
-  const content = await readFile(metadataPath, 'utf-8');
-  return JSON.parse(content) as AskMetadata;
+  const metadata = JSON.parse(await readFile(metadataPath, 'utf-8')) as AskMetadata;
+  
+  // Include latest answer if available
+  let latestAnswer = null;
+  if (existsSync(answerPath)) {
+    latestAnswer = JSON.parse(await readFile(answerPath, 'utf-8'));
+  }
+  
+  return {
+    ...metadata,
+    latestAnswer
+  };
 }
 
 /**
@@ -193,13 +256,20 @@ export async function trashItem(id: string): Promise<boolean> {
   
   const metadataBasename = basename(item.metadataPath);
   const scriptBasename = basename(item.scriptPath);
+  const answerBasename = `${id}-latest.json`;
   
   const trashedMetadataPath = join(TRASHED_DIR, metadataBasename);
   const trashedScriptPath = join(TRASHED_DIR, scriptBasename);
+  const trashedAnswerPath = join(TRASHED_DIR, answerBasename);
+  
+  const answerPath = join(ASKED_DIR, answerBasename);
   
   // Move files to trashed
   await rename(item.metadataPath, trashedMetadataPath);
   await rename(item.scriptPath, trashedScriptPath);
+  if (existsSync(answerPath)) {
+    await rename(answerPath, trashedAnswerPath);
+  }
   
   // Remove from starred if it was starred
   const starredPath = join(STARRED_DIR, metadataBasename);
@@ -216,9 +286,11 @@ export async function trashItem(id: string): Promise<boolean> {
 export async function untrashItem(id: string): Promise<boolean> {
   const metadataBasename = `${id}.json`;
   const scriptBasename = `${id}.ts`;
+  const answerBasename = `${id}-latest.json`;
   
   const trashedMetadataPath = join(TRASHED_DIR, metadataBasename);
   const trashedScriptPath = join(TRASHED_DIR, scriptBasename);
+  const trashedAnswerPath = join(TRASHED_DIR, answerBasename);
   
   if (!existsSync(trashedMetadataPath)) {
     return false;
@@ -226,9 +298,13 @@ export async function untrashItem(id: string): Promise<boolean> {
   
   const metadataPath = join(ASKED_DIR, metadataBasename);
   const scriptPath = join(ASKED_DIR, scriptBasename);
+  const answerPath = join(ASKED_DIR, answerBasename);
   
   await rename(trashedMetadataPath, metadataPath);
   await rename(trashedScriptPath, scriptPath);
+  if (existsSync(trashedAnswerPath)) {
+    await rename(trashedAnswerPath, answerPath);
+  }
   
   return true;
 }
@@ -249,5 +325,5 @@ function slugify(text: string): string {
     .replace(/[^\w\s-]/g, '')
     .replace(/\s+/g, '-')
     .replace(/--+/g, '-')
-    .substring(0, 50);
+    .substring(0, 80); // Longer since no timestamp prefix
 }

@@ -1,10 +1,10 @@
 /**
  * Bubblewrap Sandbox for Shelley-generated scripts
  * 
- * Version 2: Direct DB mounting (no copy needed)
+ * Provides isolated execution environment for untrusted code generation
  */
 
-import { mkdir, rm, writeFile } from "fs/promises";
+import { mkdir, rm, chmod, writeFile } from "fs/promises";
 import { join } from "path";
 import { spawn } from "bun";
 
@@ -12,7 +12,7 @@ export interface SandboxConfig {
   /** Path to the script to execute */
   scriptPath: string;
   
-  /** Path to database (will be mounted read-only, NOT copied) */
+  /** Path to database (will be mounted read-only) */
   dbPath: string;
   
   /** Working directory for script execution */
@@ -21,7 +21,7 @@ export interface SandboxConfig {
   /** Timeout in milliseconds (default: 30000) */
   timeoutMs?: number;
   
-  /** Whether to allow network access (default: false for scripts) */
+  /** Whether to allow network access (default: true for Shelley) */
   allowNetwork?: boolean;
 }
 
@@ -34,8 +34,6 @@ export interface SandboxResult {
 
 /**
  * Execute a script in a bubblewrap sandbox
- * 
- * Database is mounted directly (read-only) - NO COPY!
  */
 export async function runInSandbox(config: SandboxConfig): Promise<SandboxResult> {
   const {
@@ -43,25 +41,25 @@ export async function runInSandbox(config: SandboxConfig): Promise<SandboxResult
     dbPath,
     workDir,
     timeoutMs = 30000,
-    allowNetwork = false
+    allowNetwork = true
   } = config;
 
   // Ensure work directory exists
   await mkdir(workDir, { recursive: true });
 
   try {
-    // Build bubblewrap arguments with DIRECT DB mount
-    const bwrapArgs = buildBwrapArgs(workDir, dbPath, allowNetwork);
+    // Build bubblewrap arguments
+    const bwrapArgs = buildBwrapArgs(workDir, allowNetwork);
     
-    // Bun is mounted at /bun in the sandbox
+    // Bun is already mounted at /bun in the sandbox
+    // Spawn the sandboxed process
     const proc = spawn(["bwrap", ...bwrapArgs, "/bun/bin/bun", "/work/analyze.ts"], {
       stdout: "pipe",
       stderr: "pipe",
       env: {
         PATH: "/usr/local/bin:/usr/bin:/bin",
         HOME: "/tmp",
-        // Scripts should use /db/db.sqlite
-        DATABASE_PATH: "/db/db.sqlite",
+        DATABASE_PATH: "/work/db.sqlite",
       }
     });
 
@@ -100,10 +98,8 @@ export async function runInSandbox(config: SandboxConfig): Promise<SandboxResult
 
 /**
  * Build bubblewrap arguments for filesystem isolation
- * 
- * Database is mounted read-only at /db/db.sqlite (NO COPY!)
  */
-function buildBwrapArgs(workDir: string, dbPath: string, allowNetwork: boolean): string[] {
+function buildBwrapArgs(workDir: string, allowNetwork: boolean): string[] {
   const bunDir = join(process.env.HOME || "/home/exedev", ".bun");
   
   const args = [
@@ -114,18 +110,15 @@ function buildBwrapArgs(workDir: string, dbPath: string, allowNetwork: boolean):
     "--ro-bind", "/bin", "/bin",
     "--ro-bind", "/sbin", "/sbin",
     
-    // DNS resolution (only if network enabled)
-    ...(allowNetwork ? [
-      "--ro-bind", "/etc/resolv.conf", "/etc/resolv.conf",
-      "--ro-bind", "/etc/ssl", "/etc/ssl",
-      "--ro-bind", "/etc/ca-certificates", "/etc/ca-certificates"
-    ] : []),
+    // DNS resolution
+    "--ro-bind", "/etc/resolv.conf", "/etc/resolv.conf",
+    
+    // SSL certificates (for HTTPS)
+    "--ro-bind", "/etc/ssl", "/etc/ssl",
+    "--ro-bind", "/etc/ca-certificates", "/etc/ca-certificates",
     
     // Bun runtime
     "--ro-bind", bunDir, "/bun",
-    
-    // Database - DIRECT MOUNT (read-only, no copy!)
-    "--ro-bind", dbPath, "/db/db.sqlite",
     
     // Work directory (read-write for script output)
     "--bind", workDir, "/work",
@@ -136,8 +129,8 @@ function buildBwrapArgs(workDir: string, dbPath: string, allowNetwork: boolean):
     "--tmpfs", "/tmp",
     
     // Security
-    "--die-with-parent",
-    "--new-session",
+    "--die-with-parent",  // Kill if parent dies
+    "--new-session",      // New session ID
     
     // Working directory
     "--chdir", "/work"
@@ -149,46 +142,6 @@ function buildBwrapArgs(workDir: string, dbPath: string, allowNetwork: boolean):
   } else {
     args.push("--unshare-net");
   }
-
-  return args;
-}
-
-/**
- * Build bubblewrap arguments for Shelley execution
- * (Shelley needs network but not database)
- */
-function buildShelleyBwrapArgs(workDir: string): string[] {
-  const args = [
-    // System directories (read-only)
-    "--ro-bind", "/usr", "/usr",
-    "--ro-bind", "/lib", "/lib",
-    "--ro-bind", "/lib64", "/lib64",
-    "--ro-bind", "/bin", "/bin",
-    "--ro-bind", "/sbin", "/sbin",
-    
-    // DNS resolution and SSL (needed for API calls)
-    "--ro-bind", "/etc/resolv.conf", "/etc/resolv.conf",
-    "--ro-bind", "/etc/ssl", "/etc/ssl",
-    "--ro-bind", "/etc/ca-certificates", "/etc/ca-certificates",
-    
-    // Work directory (read-write for generated scripts)
-    "--bind", workDir, "/work",
-    
-    // System necessities
-    "--dev-bind", "/dev", "/dev",
-    "--proc", "/proc",
-    "--tmpfs", "/tmp",
-    
-    // Security
-    "--die-with-parent",
-    "--new-session",
-    
-    // Network (Shelley needs to call Claude API)
-    "--share-net",
-    
-    // Working directory
-    "--chdir", "/work"
-  ];
 
   return args;
 }
@@ -229,7 +182,7 @@ export async function runShelleyInSandbox(
   // Create Shelley config
   await createShelleyConfig(workDir);
 
-  const bwrapArgs = buildShelleyBwrapArgs(workDir);
+  const bwrapArgs = buildBwrapArgs(workDir, true);  // Network needed
 
   const proc = spawn(
     ["bwrap", ...bwrapArgs, "/usr/local/bin/shelley", "-config", "/work/shelley-config.json", "prompt", prompt],

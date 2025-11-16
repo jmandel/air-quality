@@ -50,6 +50,16 @@ interface ChartBlock {
   }>;
 }
 
+// Legacy format support
+interface LegacyDashboardResponse {
+  answer?: string;
+  textAnswer?: string;
+  data?: any;
+  visualType?: "line" | "bar" | "gauge" | "table" | "none";
+  visualization?: any;
+  timeRange?: string;
+}
+
 // DOM elements
 const queryInput = document.getElementById("query-input") as HTMLInputElement;
 const askBtn = document.getElementById("ask-btn") as HTMLButtonElement;
@@ -200,7 +210,7 @@ async function askQuestion() {
   };
 }
 
-function renderDashboard(answer: DashboardResponse | string) {
+function renderDashboard(answer: DashboardResponse | LegacyDashboardResponse | string) {
   // Handle plain text answers
   if (typeof answer === "string") {
     dashboardEl.innerHTML = `
@@ -213,7 +223,29 @@ function renderDashboard(answer: DashboardResponse | string) {
     return;
   }
 
-  // Handle dashboard responses
+  // Check if it's the new format (has blocks)
+  if ('blocks' in answer && answer.blocks) {
+    renderNewFormat(answer as DashboardResponse);
+    return;
+  }
+
+  // Handle legacy format (has answer/textAnswer)
+  if ('answer' in answer || 'textAnswer' in answer) {
+    renderLegacyFormat(answer as LegacyDashboardResponse);
+    return;
+  }
+
+  // Fallback
+  dashboardEl.innerHTML = `
+    <div class="tile text-error">
+      <div class="tile-title">Error</div>
+      <div class="text-content">Unknown response format</div>
+    </div>
+  `;
+  dashboardEl.classList.remove("hidden");
+}
+
+function renderNewFormat(answer: DashboardResponse) {
   let html = "";
 
   // Summary
@@ -241,6 +273,20 @@ function renderDashboard(answer: DashboardResponse | string) {
 
   // Render charts after DOM is ready
   setTimeout(() => renderAllCharts(answer.blocks), 0);
+}
+
+function renderLegacyFormat(answer: LegacyDashboardResponse) {
+  const text = answer.answer || answer.textAnswer || "No response";
+  
+  dashboardEl.innerHTML = `
+    <div class="tiles">
+      <div class="tile text-info">
+        <div class="tile-title">Response</div>
+        <div class="text-content">${escapeHtml(text)}</div>
+      </div>
+    </div>
+  `;
+  dashboardEl.classList.remove("hidden");
 }
 
 function renderTextTile(block: TextBlock): string {

@@ -172,6 +172,18 @@
     }
 
     .loading {
+    }
+
+    #progress-messages {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 8px;
+      text-align: left;
+    }
+
+    #progress-messages p {
+      margin: 4px 0;
+      font-size: 14px;
       text-align: center;
       padding: 48px 24px;
       color: var(--muted);
@@ -450,7 +462,7 @@
 
     <div id="loading" class="loading hidden">
       <div class="spinner"></div>
-      <p>Analyzing data...</p>
+      <div id="progress-messages"></div>
     </div>
 
     <div id="error" class="error-box hidden"></div>

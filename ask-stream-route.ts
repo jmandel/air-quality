@@ -3,6 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { findPreviousScript } from "./ask-history-lookup";
 import { streamShelleyExecution } from "./ask-stream";
+import dashboardTypesSource from "./dashboard-types.ts" with { type: "text" };
 import { saveToHistory } from "./ask-history";
 
 export async function handleAskStream(req: Request): Promise<Response> {
@@ -66,77 +67,7 @@ The script MUST:
 
 REQUIRED OUTPUT SCHEMA:
 
-interface DashboardResponse {
-  summary: string;  // Brief summary text
-  blocks: Array<TextBlock | MetricBlock | ChartBlock>;
-}
-
-interface TextBlock {
-  type: "text";
-  title?: string;
-  content: string;  // Main text (can use markdown)
-  variant?: "info" | "warning" | "success" | "error";
-}
-
-interface MetricBlock {
-  type: "metric";
-  title: string;
-  value: number;
-  unit: string;
-  status?: "good" | "warning" | "critical";
-  trend?: {
-    direction: "up" | "down" | "stable";
-    percentage?: number;
-    period?: string;
-  };
-}
-
-interface ChartBlock {
-  type: "chart";
-  title: string;
-  chartType: "line" | "bar" | "area";
-  xAxis: { label: string; type: "time" | "category" };
-  yAxis: { label: string; unit?: string; min?: number; max?: number };
-  series: Array<{
-    name: string;
-    color?: string;
-    data: Array<{ x: string | number; y: number }>;
-  }>;
-  annotations?: Array<{
-    type: "threshold";
-    value: number;
-    label: string;
-    color?: string;
-  }>;
-}
-
-EXAMPLE OUTPUT:
-{
-  "summary": "Current CO₂ level is 450 ppm (good)",
-  "blocks": [
-    {
-      "type": "metric",
-      "title": "Current CO₂",
-      "value": 450,
-      "unit": "ppm",
-      "status": "good"
-    },
-    {
-      "type": "chart",
-      "title": "CO₂ - Last Hour",
-      "chartType": "line",
-      "xAxis": { "label": "Time", "type": "time" },
-      "yAxis": { "label": "CO₂", "unit": "ppm" },
-      "series": [{
-        "name": "CO₂",
-        "data": [
-          { "x": "2025-11-15T20:00:00Z", "y": 420 },
-          { "x": "2025-11-15T20:30:00Z", "y": 450 }
-        ]
-      }]
-    }
-  ]
-}
+${dashboardTypesSource}
 
 Now write analyze.ts to ${analyzePath} that answers: "${query}"`;
   

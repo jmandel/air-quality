@@ -3,6 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { DashboardResponse } from "./dashboard-types";
 
+import { saveToHistory } from "./ask-history";
 export async function askShelley(question: string): Promise<{ 
   answer: DashboardResponse | string, 
   conversationId: string,
@@ -235,7 +236,11 @@ Now write analyze.ts to ${analyzePath} that answers: "${question}"`;
   const dashboardResponse = JSON.parse(jsonOutput.trim()) as DashboardResponse;
   console.log(`✅ Parsed dashboard with ${dashboardResponse.blocks.length} blocks`);
   
-  // Clean up
+  // Save to history
+  const historyId = await saveToHistory(question, dashboardResponse, conversationId, scriptContent);
+  console.log(`💾 Saved to history: ${historyId}`);
+  
+  // Clean up temp directory
   await rm(tempDir, { recursive: true, force: true }).catch(() => {});
   
   return {

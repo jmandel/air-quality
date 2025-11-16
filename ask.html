@@ -129,13 +129,22 @@
       cursor: not-allowed;
     }
 
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
     .examples {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
     }
 
-    .example-chip {
+    .example-chip, .starred-chip {
       background: rgba(148, 163, 184, 0.12);
       border: 1px solid rgba(148, 163, 184, 0.2);
       color: var(--muted);
@@ -146,7 +155,17 @@
       transition: all 0.2s;
     }
 
-    .example-chip:hover {
+    .starred-chip {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: var(--accent);
+    }
+
+    .starred-chip::before {
+      content: "⭐ ";
+    }
+
+    .example-chip:hover, .starred-chip:hover {
       background: rgba(56, 189, 248, 0.15);
       border-color: rgba(56, 189, 248, 0.4);
       color: var(--accent);
@@ -313,6 +332,78 @@
       margin-top: 16px;
     }
 
+    /* History catalog */
+    .history-catalog {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-top: 48px;
+    }
+
+    .history-catalog h2 {
+      margin: 0 0 16px;
+      font-size: 18px;
+      color: var(--text);
+    }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+
+    .history-item:hover {
+      background: rgba(56, 189, 248, 0.1);
+    }
+
+    .history-item-question {
+      flex: 1;
+      cursor: pointer;
+      color: var(--text);
+    }
+
+    .history-item-time {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .history-item-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .history-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .history-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .history-btn.starred {
+      color: var(--warning);
+    }
+
     .hidden {
       display: none;
     }
@@ -340,12 +431,20 @@
         <button id="ask-btn" class="ask-btn">Ask</button>
       </div>
 
-      <div class="examples">
-        <span class="example-chip" data-query="What is the current CO₂ level?">Current CO₂</span>
-        <span class="example-chip" data-query="Is the air quality good right now?">Air quality status</span>
-        <span class="example-chip" data-query="Show me PM2.5 over the last hour">PM2.5 trend</span>
-        <span class="example-chip" data-query="What was the peak temperature today?">Peak temperature</span>
-        <span class="example-chip" data-query="Compare CO₂ now vs 1 hour ago">Compare CO₂</span>
+      <div id="starred-section" class="hidden">
+        <div class="section-title">Starred Queries</div>
+        <div id="starred-chips" class="examples"></div>
+      </div>
+
+      <div>
+        <div class="section-title">Example Queries</div>
+        <div class="examples">
+          <span class="example-chip" data-query="What is the current CO₂ level?">Current CO₂</span>
+          <span class="example-chip" data-query="Is the air quality good right now?">Air quality status</span>
+          <span class="example-chip" data-query="Show me PM2.5 over the last hour">PM2.5 trend</span>
+          <span class="example-chip" data-query="What was the peak temperature today?">Peak temperature</span>
+          <span class="example-chip" data-query="Compare CO₂ now vs 1 hour ago">Compare CO₂</span>
+        </div>
       </div>
     </div>
 
@@ -357,6 +456,11 @@
     <div id="error" class="error-box hidden"></div>
 
     <div id="dashboard" class="dashboard hidden"></div>
+
+    <div id="history-catalog" class="history-catalog hidden">
+      <h2>📚 Query History</h2>
+      <div id="history-list" class="history-list"></div>
+    </div>
   </div>
 
   <script type="module" src="./ask.ts"></script>

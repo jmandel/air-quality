@@ -691,6 +691,17 @@ const server = serve({
     },
   },
 
+
+  async fetch(req) {
+    // Try to handle ask API routes first
+    const { handleAskApiRoute } = await import("./ask-api-routes");
+    const askApiResponse = await handleAskApiRoute(req);
+    if (askApiResponse) return askApiResponse;
+    
+    // Fall through to default routing
+    return new Response("Not Found", { status: 404 });
+  },
+
   development: true,
 });
 

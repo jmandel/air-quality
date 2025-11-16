@@ -1,0 +1,43 @@
+{
+  "id": "2025-11-16T03-18-32-905Z_test",
+  "timestamp": "2025-11-16T03:18:32.905Z",
+  "question": "test",
+  "answer": {
+    "summary": "✓ System test successful - Database is connected and operational",
+    "blocks": [
+      {
+        "type": "text",
+        "title": "Test Status",
+        "content": "The air quality monitoring system is operational. Database connection successful.",
+        "variant": "success"
+      },
+      {
+        "type": "metric",
+        "title": "Available Sensors",
+        "value": 29,
+        "unit": "sensors",
+        "status": "good"
+      },
+      {
+        "type": "metric",
+        "title": "Total Readings",
+        "value": 10205,
+        "unit": "readings",
+        "status": "good"
+      },
+      {
+        "type": "text",
+        "title": "Latest Data",
+        "content": "Most recent reading: 2025-11-16T03:18:24.837Z",
+        "variant": "info"
+      },
+      {
+        "type": "text",
+        "title": "Ready for Queries",
+        "content": "You can now ask questions about:\n• CO₂ levels (co2_ppm)\n• PM 2.5 (pm2_5_ug_m3)\n• Temperature (sen55_temp_c)\n• Humidity (sen55_humidity_pct)\n• VOC Index (sen55_voc_index)\n• And 18 more sensors",
+        "variant": "info"
+      }
+    ]
+  },
+  "conversationId": "cli-1763263112848"
+}

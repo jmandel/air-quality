@@ -344,3 +344,157 @@ function escapeHtml(text: string): string {
 
 // Start the app
 init();
+
+// ==================== HISTORY MANAGEMENT ====================
+
+interface HistoryItem {
+  id: string;
+  timestamp: string;
+  question: string;
+  starred: boolean;
+  trashed: boolean;
+}
+
+let currentHistory: HistoryItem[] = [];
+
+async function loadStarredQueries() {
+  try {
+    const response = await fetch("/api/ask/starred");
+    const data = await response.json();
+    
+    if (data.items && data.items.length > 0) {
+      const starredSection = document.getElementById("starred-section");
+      const starredChips = document.getElementById("starred-chips");
+      
+      if (!starredSection || !starredChips) return;
+      
+      starredChips.innerHTML = "";
+      
+      data.items.forEach((item: HistoryItem) => {
+        const chip = document.createElement("span");
+        chip.className = "starred-chip";
+        chip.textContent = item.question;
+        chip.addEventListener("click", () => {
+          queryInput.value = item.question;
+          askQuestion();
+        });
+        starredChips.appendChild(chip);
+      });
+      
+      starredSection.classList.remove("hidden");
+    }
+  } catch (error) {
+    console.error("Failed to load starred queries:", error);
+  }
+}
+
+async function loadHistory() {
+  try {
+    const response = await fetch("/api/ask/history?limit=1000");
+    const data = await response.json();
+    
+    if (!data.items) return;
+    
+    currentHistory = data.items.filter((item: HistoryItem) => !item.trashed);
+    
+    if (currentHistory.length === 0) return;
+    
+    const catalog = document.getElementById("history-catalog");
+    const list = document.getElementById("history-list");
+    
+    if (!catalog || !list) return;
+    
+    list.innerHTML = "";
+    
+    currentHistory.forEach((item: HistoryItem) => {
+      const row = document.createElement("div");
+      row.className = "history-item";
+      
+      const question = document.createElement("div");
+      question.className = "history-item-question";
+      question.textContent = item.question;
+      question.addEventListener("click", () => {
+        queryInput.value = item.question;
+        askQuestion();
+      });
+      
+      const time = document.createElement("div");
+      time.className = "history-item-time";
+      time.textContent = formatTimestamp(item.timestamp);
+      
+      const actions = document.createElement("div");
+      actions.className = "history-item-actions";
+      
+      const starBtn = document.createElement("button");
+      starBtn.className = `history-btn ${item.starred ? "starred" : ""}`;
+      starBtn.textContent = item.starred ? "⭐" : "☆";
+      starBtn.title = item.starred ? "Unstar" : "Star";
+      starBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await toggleStar(item.id, item.starred);
+        await loadStarredQueries();
+        await loadHistory();
+      });
+      
+      const trashBtn = document.createElement("button");
+      trashBtn.className = "history-btn";
+      trashBtn.textContent = "🗑️";
+      trashBtn.title = "Trash";
+      trashBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await trashHistoryItem(item.id);
+        await loadHistory();
+      });
+      
+      actions.appendChild(starBtn);
+      actions.appendChild(trashBtn);
+      
+      row.appendChild(question);
+      row.appendChild(time);
+      row.appendChild(actions);
+      
+      list.appendChild(row);
+    });
+    
+    catalog.classList.remove("hidden");
+  } catch (error) {
+    console.error("Failed to load history:", error);
+  }
+}
+
+async function toggleStar(id: string, isStarred: boolean) {
+  try {
+    const method = isStarred ? "DELETE" : "POST";
+    await fetch(`/api/ask/star/${id}`, { method });
+  } catch (error) {
+    console.error("Failed to toggle star:", error);
+  }
+}
+
+async function trashHistoryItem(id: string) {
+  try {
+    await fetch(`/api/ask/trash/${id}`, { method: "POST" });
+  } catch (error) {
+    console.error("Failed to trash item:", error);
+  }
+}
+
+function formatTimestamp(ts: string): string {
+  const date = new Date(ts);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  
+  return date.toLocaleDateString();
+}
+
+// Load starred queries and history on page load
+loadStarredQueries();
+loadHistory();

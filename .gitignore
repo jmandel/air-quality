@@ -24,3 +24,7 @@ Thumbs.db
 *.swo
 *~
 *.backup
+*.db-shm
+*.db-wal
+*.backup*
+*.bak

@@ -2,7 +2,10 @@ import { serve } from "bun";
 import { Database } from "bun:sqlite";
 import viewerPage from "./index.html";
 import uploaderPage from "./upload.html";
+import askPage from "./ask.html";
+import testStreamPage from "./test-stream.html";
 import { SENSOR_SEED_DATA } from "./seed-data";
+import { askShelley } from "./ask-helper";
 
 const PORT = parseInt(process.env.PORT || "443", 10);
 const DEFAULT_AIR_SENSOR_URL = process.env.AIR_SENSOR_URL || "http://10.0.0.37/";
@@ -360,12 +363,16 @@ setInterval(() => {
 // ==================== HTTP SERVER ====================
 
 const server = serve({
+  idleTimeout: 255,
   port: PORT,
 
   routes: {
     "/": viewerPage,
     "/upload": uploaderPage,
+    "/ask": askPage, 
+    "/ask.html": askPage,
     "/upload.html": uploaderPage,
+    "/test-stream.html": testStreamPage,
     // SSE stream endpoint for remote clients
     "/api/stream": async (req) => {
       const clientId = crypto.randomUUID();
@@ -494,12 +501,225 @@ const server = serve({
         return Response.json(readings);
       },
     },
+    // POST /api/submit - Direct submission from ESPHome device
+    "/api/submit": {
+      async POST(req) {
+        try {
+          const data = await req.json();
+          
+          // Validate required fields
+          if (!data.measurements) {
+            return Response.json({ 
+              error: "Missing required field: measurements" 
+            }, { status: 400 });
+          }
+          // Use server time instead of device timestamp for consistency
+          const timestamp = Date.now();
+          // Store original device timestamp in logs for reference
+          const deviceTimestamp = data.timestamp;
+
+          // Map ESPHome fields to sensor names in our database
+          // Direct 1:1 mapping from JSON fields to database sensor names
+          const sensorMappings: Record<string, { sensorName: string, value: any }> = {
+            // Core measurements
+            'co2_ppm': { sensorName: 'co2_ppm', value: data.measurements.co2_ppm },
+            'dps310_pressure_hpa': { sensorName: 'dps310_pressure_hpa', value: data.measurements.pressure_hpa },
+            'sen55_temp_c': { sensorName: 'sen55_temp_c', value: data.measurements.sen55_temp_c || data.measurements.dps_temp_c },
+            'sen55_humidity_pct': { sensorName: 'sen55_humidity_pct', value: data.measurements.sen55_humidity_pct },
+            'sen55_voc_index': { sensorName: 'sen55_voc_index', value: data.measurements.voc_index },
+            'sen55_nox_index': { sensorName: 'sen55_nox_index', value: data.measurements.nox_index },
+            
+            // Gas measurements (from gases_ppm object)
+            'no2_ppm': { sensorName: 'no2_ppm', value: data.measurements.gases_ppm?.no2 },
+            'co_ppm': { sensorName: 'co_ppm', value: data.measurements.gases_ppm?.co },
+            'h2_ppm': { sensorName: 'h2_ppm', value: data.measurements.gases_ppm?.h2 },
+            'ethanol_ppm': { sensorName: 'ethanol_ppm', value: data.measurements.gases_ppm?.ethanol },
+            'ch4_ppm': { sensorName: 'ch4_ppm', value: data.measurements.gases_ppm?.ch4 },
+            'nh3_ppm': { sensorName: 'nh3_ppm', value: data.measurements.gases_ppm?.nh3 },
+            
+            // PM mass measurements (from pm_ug_m3 object)
+            'pm1_ug_m3': { sensorName: 'pm1_ug_m3', value: data.measurements.pm_ug_m3?.pm1 },
+            'pm2_5_ug_m3': { sensorName: 'pm2_5_ug_m3', value: data.measurements.pm_ug_m3?.pm2_5 },
+            'pm4_ug_m3': { sensorName: 'pm4_ug_m3', value: data.measurements.pm_ug_m3?.pm4 },
+            'pm10_ug_m3': { sensorName: 'pm10_ug_m3', value: data.measurements.pm_ug_m3?.pm10 },
+            
+            // PM count measurements (from pm_ug_m3 object)
+            'pm0_3_to_1_num': { sensorName: 'pm0_3_to_1_num', value: data.measurements.pm_ug_m3?.pm0_3_to_1 },
+            'pm1_to_2_5_num': { sensorName: 'pm1_to_2_5_num', value: data.measurements.pm_ug_m3?.pm1_to_2_5 },
+            'pm2_5_to_4_num': { sensorName: 'pm2_5_to_4_num', value: data.measurements.pm_ug_m3?.pm2_5_to_4 },
+            'pm4_to_10_num': { sensorName: 'pm4_to_10_num', value: data.measurements.pm_ug_m3?.pm4_to_10 },
+            
+            // Diagnostics
+            'wifi_rssi_dbm': { sensorName: 'wifi_rssi_dbm', value: data.diagnostics?.wifi_rssi_dbm },
+            'uptime_s': { sensorName: 'uptime_s', value: data.diagnostics?.uptime_s },
+          };
+          let inserted = 0;
+          let duplicates = 0;
+          let errors = 0;
+          const broadcastReadings: any[] = [];
+
+          const transaction = db.transaction(() => {
+            for (const [key, mapping] of Object.entries(sensorMappings)) {
+              const { sensorName, value } = mapping;
+              
+              // Skip if value is null, undefined, or NaN
+              if (value == null || (typeof value === 'number' && isNaN(value))) {
+                continue;
+              }
+
+              const sensorInfo = getSensor(sensorName);
+              if (!sensorInfo) {
+                console.warn(`Unknown sensor: ${sensorName}`);
+                errors++;
+                continue;
+              }
+
+              // Check for duplicates
+              if (isDuplicate(sensorInfo.sensor_id, value, timestamp)) {
+                duplicates++;
+                continue;
+              }
+
+              // Insert raw reading
+              insertReading.run(timestamp, sensorInfo.sensor_id, value);
+              inserted++;
+
+              // Add to aggregation
+              if (value !== null && value !== undefined) {
+                addToAggregation(timestamp, sensorInfo.sensor_id, value);
+              }
+
+              // Collect for broadcasting to SSE clients
+              broadcastReadings.push({
+                sensorId: sensorName,
+                value: value,
+                ts: timestamp
+              });
+            }
+          });
+
+          transaction();
+
+          // Broadcast new readings to connected SSE clients
+          if (broadcastReadings.length > 0) {
+            broadcastToClients(broadcastReadings);
+          }
+
+          // Detailed logging for review
+          const logEntry = {
+            timestamp: new Date().toISOString(),
+            device: data.device || 'unknown',
+            fw_version: data.fw_version,
+            device_timestamp_claimed: deviceTimestamp,
+            server_timestamp_used: timestamp,
+            inserted,
+            duplicates,
+            errors,
+            measurements: data.measurements,
+            diagnostics: data.diagnostics
+          };
+          
+          console.log(`📥 Device submission: ${data.device || 'unknown'} - ${inserted} inserted, ${duplicates} duplicates, ${errors} errors`);
+          console.log(`📋 Submission details: ${JSON.stringify(logEntry)}`);
+
+          return Response.json({
+            success: true,
+            device: data.device,
+            timestamp: data.timestamp,
+            inserted,
+            duplicates,
+            errors,
+            message: `Processed ${inserted + duplicates + errors} sensor readings`
+          });
+
+          return Response.json({
+            success: true,
+            device: data.device,
+            timestamp: data.timestamp,
+            inserted,
+            duplicates,
+            errors,
+            message: `Processed ${inserted + duplicates + errors} sensor readings`
+          });
+        } catch (error: any) {
+          console.error('Error processing device submission:', error);
+          return Response.json({ error: error.message }, { status: 500 });
+        }
+      },
+    },
+
+
+
+
+    "/api/ask/stream": {
+      async GET(req) {
+        try {
+          const { handleAskStream } = await import("./ask-stream-route");
+          return await handleAskStream(req);
+        } catch (error: any) {
+          console.error("Error in /api/ask/stream:", error);
+          return Response.json({ 
+            error: "Internal server error",
+            message: error.message 
+          }, { status: 500 });
+        }
+      }
+    },
+    "/api/ask": {
+      async GET(req) {
+        const url = new URL(req.url);
+        const query = url.searchParams.get("q") || url.searchParams.get("query");
+        
+        if (!query) {
+          return Response.json({ 
+            error: "Missing query parameter. Use ?q=your_question" 
+          }, { status: 400 });
+        }
+        
+        try {
+          const { answer, conversationId, usedCachedScript, previousId } = await askShelley(query);
+          
+          // Check if answer is a DashboardResponse or plain text
+          const isDashboard = typeof answer === 'object' && answer !== null && 'blocks' in answer;
+          
+          return Response.json({
+            question: query,
+            answer,
+            isDashboard,
+            conversationId,
+            usedCachedScript,
+            previousId,
+            timestamp: new Date().toISOString()
+          });
+          
+        } catch (error: any) {
+          console.error("Error in /api/ask:", error);
+          return Response.json({ 
+            error: "Internal server error",
+            message: error.message 
+          }, { status: 500 });
+        }
+      }
+    },
+
 
     "/api/config": async () => {
       return Response.json({
         defaultSensorUrl: DEFAULT_AIR_SENSOR_URL,
+        serverTime: Date.now(),
       });
     },
+  },
+
+
+  async fetch(req) {
+    // Try to handle ask API routes first
+    const { handleAskApiRoute } = await import("./ask-api-routes");
+    const askApiResponse = await handleAskApiRoute(req);
+    if (askApiResponse) return askApiResponse;
+    
+    // Fall through to default routing
+    return new Response("Not Found", { status: 404 });
   },
 
   development: true,

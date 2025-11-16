@@ -39,6 +39,7 @@ type SensorChart = {
 
 const API_BASE = `${window.location.origin}/api`;
 const HISTORY_WINDOW_HOURS = 6;
+let serverTimeDiff = 0; // milliseconds offset: server - client
 const MAX_RECENT_EVENTS = 20;
 const MAX_POINTS = 720;
 const CHART_FLUSH_INTERVAL_MS = 750;
@@ -539,7 +540,7 @@ function handleReading(data: ApiReading, opts: { batch?: boolean } = {}) {
 }
 
 async function loadHistory() {
-  const since = Date.now() - HISTORY_WINDOW_HOURS * 60 * 60 * 1000;
+  const since = (Date.now() + serverTimeDiff) - HISTORY_WINDOW_HOURS * 60 * 60 * 1000;
   try {
     const res = await fetch(`${API_BASE}/readings?since=${since}`);
     if (!res.ok) throw new Error(`Request failed with ${res.status}`);
@@ -756,9 +757,27 @@ renderRecentActivity();
 renderLastUpdate();
 updateChartEmptyState();
 setupEvents();
+async function syncServerTime() {
+  try {
+    const res = await fetch(`${API_BASE}/config`);
+    const config = await res.json();
+    if (config.serverTime) {
+      serverTimeDiff = config.serverTime - Date.now();
+      const daysDiff = (serverTimeDiff / 1000 / 60 / 60 / 24).toFixed(1);
+      console.log(`⏰ Server time offset: ${serverTimeDiff}ms (${daysDiff} days)`);
+    }
+  } catch (err) {
+    console.warn("Could not sync server time:", err);
+  }
+}
 
-loadHistory().finally(() => {
+
+async function init() {
+  await syncServerTime();
+  await loadHistory();
   openStream();
-});
+}
+
+init();
 
 setInterval(updateTimeAgoLabels, 15_000);

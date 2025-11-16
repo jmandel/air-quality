@@ -49,7 +49,7 @@ export interface SensorMetadata {
 }
 
 export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
-  'sensor-co2': {
+  'co2_ppm': {
     displayName: 'CO₂',
     defaultVisible: true,
     unit: 'ppm',
@@ -75,7 +75,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     standards: ['ASHRAE', 'EPA'],
   },
 
-  'sensor-pm__2_5_m_weight_concentration': {
+  'pm2_5_ug_m3': {
     displayName: 'PM2.5',
     defaultVisible: true,
     unit: 'µg/m³',
@@ -101,7 +101,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     standards: ['WHO', 'EPA'],
   },
 
-  'sensor-pm__1_0_m_weight_concentration': {
+  'pm1_ug_m3': {
     displayName: 'PM1.0',
     unit: 'µg/m³',
     decimalPlaces: 1,
@@ -121,7 +121,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     ],
   },
 
-  'sensor-pm__4_0_m_weight_concentration': {
+  'pm4_ug_m3': {
     displayName: 'PM4.0',
     unit: 'µg/m³',
     decimalPlaces: 1,
@@ -138,7 +138,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     ],
   },
 
-  'sensor-pm__10_0_m_weight_concentration': {
+  'pm10_ug_m3': {
     displayName: 'PM10',
     unit: 'µg/m³',
     decimalPlaces: 1,
@@ -160,7 +160,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     standards: ['WHO', 'EPA'],
   },
 
-  'sensor-sen55_voc': {
+  'sen55_voc_index': {
     displayName: 'VOC Index',
     defaultVisible: true,
     unit: 'index',
@@ -184,7 +184,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     ],
   },
 
-  'sensor-sen55_nox': {
+  'sen55_nox_index': {
     displayName: 'NOx Index',
     defaultVisible: true,
     unit: 'index',
@@ -205,7 +205,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     ],
   },
 
-  'sensor-sen55_temperature': {
+  'sen55_temp_c': {
     displayName: 'Temperature',
     defaultVisible: true,
     unit: '°C',
@@ -229,7 +229,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     standards: ['ASHRAE 55'],
   },
 
-  'sensor-sen55_humidity': {
+  'sen55_humidity_pct': {
     displayName: 'Humidity',
     defaultVisible: true,
     unit: '%',
@@ -255,7 +255,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     standards: ['ASHRAE'],
   },
 
-  'sensor-co': {
+  'co_ppm': {
     displayName: 'CO',
     unit: 'ppm',
     decimalPlaces: 2,
@@ -279,7 +279,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     standards: ['EPA', 'WHO', 'OSHA'],
   },
 
-  'sensor-methane': {
+  'ch4_ppm': {
     displayName: 'Methane',
     unit: 'ppm',
     decimalPlaces: 2,
@@ -300,7 +300,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     standards: ['NIOSH'],
   },
 
-  'sensor-ethanol': {
+  'ethanol_ppm': {
     displayName: 'Ethanol',
     unit: 'ppm',
     decimalPlaces: 2,
@@ -320,7 +320,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     ],
   },
 
-  'sensor-hydrogen': {
+  'h2_ppm': {
     displayName: 'Hydrogen',
     unit: 'ppm',
     decimalPlaces: 2,
@@ -337,7 +337,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     ],
   },
 
-  'sensor-ammonia': {
+  'nh3_ppm': {
     displayName: 'Ammonia',
     unit: 'ppm',
     decimalPlaces: 2,
@@ -362,7 +362,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     standards: ['OSHA'],
   },
 
-  'sensor-no2': {
+  'no2_ppm': {
     displayName: 'NO₂',
     unit: 'ppb',
     decimalPlaces: 0,
@@ -386,7 +386,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     standards: ['EPA'],
   },
 
-  'sensor-dps310_pressure': {
+  'dps310_pressure_hpa': {
     displayName: 'Pressure',
     unit: 'hPa',
     decimalPlaces: 1,
@@ -407,7 +407,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     ],
   },
 
-  'sensor-esp_temperature': {
+  'esp_temp_c': {
     displayName: 'ESP Temperature',
     unit: '°C',
     decimalPlaces: 1,
@@ -428,7 +428,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
   },
 
   // Aliases for sensors with different naming schemes
-  'sensor-carbon_monoxide': {
+  'co_ppm': {
     displayName: 'CO',
     unit: 'ppm',
     decimalPlaces: 2,
@@ -452,7 +452,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
     standards: ['EPA', 'WHO', 'OSHA'],
   },
 
-  'sensor-nitrogen_dioxide': {
+  'no2_ppm': {
     displayName: 'NO₂',
     unit: 'ppb',
     decimalPlaces: 0,

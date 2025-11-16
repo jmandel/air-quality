@@ -4,11 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ask About Your Air Quality</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.0/marked.min.js"></script>
   <style>
     :root {
       --bg: #0f172a;
       --surface: #1e293b;
-      --surface-alt: #334155;
       --border: #475569;
       --text: #f1f5f9;
       --muted: #94a3b8;
@@ -18,39 +19,26 @@
       --success: #22c55e;
     }
     
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     
     body {
-      font-family: system-ui, -apple-system, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
       padding: 2rem;
       line-height: 1.6;
     }
     
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
+    .container { max-width: 1400px; margin: 0 auto; }
     
-    h1 {
-      font-size: 2rem;
-      margin-bottom: 0.5rem;
-    }
+    h1 { font-size: 2rem; margin-bottom: 0.5rem; }
     
-    .subtitle {
-      color: var(--muted);
-      margin-bottom: 2rem;
-    }
+    .subtitle { color: var(--muted); margin-bottom: 2rem; }
     
     .query-box {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 12px;
       padding: 1.5rem;
       margin-bottom: 2rem;
     }
@@ -58,110 +46,123 @@
     .input-group {
       display: flex;
       gap: 1rem;
+      margin-bottom: 1rem;
     }
     
     input[type="text"] {
       flex: 1;
       background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 6px;
+      border-radius: 8px;
       padding: 0.75rem 1rem;
       color: var(--text);
       font-size: 1rem;
     }
     
-    input[type="text"]:focus {
-      outline: none;
-      border-color: var(--accent);
-    }
-    
     button {
       background: var(--accent);
-      border: none;
-      border-radius: 6px;
-      padding: 0.75rem 2rem;
       color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1.5rem;
       font-size: 1rem;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
       transition: opacity 0.2s;
     }
     
-    button:hover {
-      opacity: 0.9;
-    }
-    
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
     
     .examples {
-      margin-top: 1rem;
-      color: var(--muted);
-      font-size: 0.875rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
     }
     
     .example-chip {
-      display: inline-block;
-      background: var(--surface-alt);
-      padding: 0.25rem 0.75rem;
-      border-radius: 4px;
-      margin: 0.25rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4rem 0.8rem;
+      font-size: 0.875rem;
+      color: var(--muted);
       cursor: pointer;
-      transition: background 0.2s;
+      transition: all 0.2s;
     }
     
     .example-chip:hover {
-      background: var(--border);
+      border-color: var(--accent);
+      color: var(--accent);
     }
     
-    .response {
+    .dashboard {
       display: none;
     }
     
-    .response.visible {
+    .dashboard.visible {
       display: block;
     }
     
     .summary {
       background: var(--surface);
-      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
       border-radius: 8px;
       padding: 1.5rem;
-      margin-bottom: 1rem;
-      font-size: 1.125rem;
+      margin-bottom: 2rem;
+      font-size: 1.1rem;
     }
     
-    .blocks {
+    .tiles {
       display: grid;
-      gap: 1rem;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
     }
     
-    .block {
+    .tile {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 12px;
       padding: 1.5rem;
+      transition: transform 0.2s;
     }
     
-    .block.full-width {
-      grid-column: 1 / -1;
+    .tile:hover {
+      transform: translateY(-2px);
     }
     
-    .block-title {
+    .tile-title {
       font-size: 0.875rem;
-      color: var(--muted);
-      margin-bottom: 0.5rem;
+      font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 1rem;
     }
     
+    /* TEXT TILE */
+    .tile.text-info { border-left: 4px solid var(--accent); }
+    .tile.text-warning { border-left: 4px solid var(--warning); }
+    .tile.text-success { border-left: 4px solid var(--success); }
+    .tile.text-error { border-left: 4px solid var(--error); }
+    
+    .text-content { line-height: 1.6; }
+    .text-content p { margin-bottom: 0.75rem; }
+    .text-content strong { color: var(--accent); }
+    
+    /* METRIC TILE */
+    .tile.metric { text-align: center; }
+    
+    .tile.metric.good { background: linear-gradient(135deg, #064e3b 0%, var(--surface) 100%); }
+    .tile.metric.warning { background: linear-gradient(135deg, #78350f 0%, var(--surface) 100%); }
+    .tile.metric.critical { background: linear-gradient(135deg, #7f1d1d 0%, var(--surface) 100%); }
+    
     .metric-value {
-      font-size: 3rem;
+      font-size: 3.5rem;
       font-weight: 700;
       line-height: 1;
+      margin: 1rem 0;
     }
     
     .metric-unit {
@@ -170,27 +171,41 @@
       margin-left: 0.5rem;
     }
     
-    .metric-status-good { color: var(--success); }
-    .metric-status-warning { color: var(--warning); }
-    .metric-status-critical { color: var(--error); }
-    
-    .trend {
-      margin-top: 0.5rem;
+    .metric-trend {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 6px;
       font-size: 0.875rem;
-      color: var(--muted);
     }
     
-    .trend-up { color: var(--error); }
-    .trend-down { color: var(--success); }
+    .trend-arrow {
+      font-size: 1.25rem;
+    }
     
-    .text-variant-info { border-left: 3px solid var(--accent); padding-left: 1rem; }
-    .text-variant-warning { border-left: 3px solid var(--warning); padding-left: 1rem; }
-    .text-variant-error { border-left: 3px solid var(--error); padding-left: 1rem; }
-    .text-variant-success { border-left: 3px solid var(--success); padding-left: 1rem; }
+    .trend-arrow.up { color: var(--error); }
+    .trend-arrow.down { color: var(--success); }
+    .trend-arrow.stable { color: var(--muted); }
+    
+    /* CHART TILE */
+    .tile.chart {
+      grid-column: span 2;
+      min-height: 400px;
+    }
+    
+    @media (max-width: 1200px) {
+      .tile.chart {
+        grid-column: span 1;
+      }
+    }
     
     .chart-container {
+      position: relative;
+      height: 350px;
       margin-top: 1rem;
-      height: 300px;
     }
     
     .loading {
@@ -199,51 +214,72 @@
       color: var(--muted);
     }
     
+    .spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
     .error-message {
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid var(--error);
+      background: var(--surface);
+      border-left: 4px solid var(--error);
       border-radius: 8px;
-      padding: 1rem;
+      padding: 1.5rem;
       color: var(--error);
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🌬️ Ask About Your Air Quality</h1>
-    <p class="subtitle">Ask questions in natural language and get data-driven answers</p>
+    <h1>🤖 Ask About Your Air Quality</h1>
+    <p class="subtitle">Ask natural language questions and get interactive dashboard answers</p>
     
     <div class="query-box">
       <div class="input-group">
         <input 
           type="text" 
           id="queryInput" 
-          placeholder="What's the current CO₂ level?"
-          autofocus
+          placeholder="What is the current CO₂ level?" 
+          autocomplete="off"
         />
         <button id="askButton">Ask</button>
       </div>
       
       <div class="examples">
-        <strong>Examples:</strong>
-        <span class="example-chip" data-query="What's the current CO₂ level?">What's the current CO₂?</span>
-        <span class="example-chip" data-query="Is the air quality good right now?">Is air quality good?</span>
-        <span class="example-chip" data-query="Show me PM2.5 over the last hour">PM2.5 last hour</span>
+        <span class="example-chip" data-query="What is the current CO₂ level?">Current CO₂</span>
+        <span class="example-chip" data-query="Is the air quality good right now?">Air quality status</span>
+        <span class="example-chip" data-query="Show me PM2.5 over the last hour">PM2.5 trend</span>
         <span class="example-chip" data-query="What was the peak temperature today?">Peak temperature</span>
+        <span class="example-chip" data-query="Compare CO₂ now vs 1 hour ago">Compare CO₂</span>
       </div>
     </div>
     
-    <div id="response" class="response"></div>
+    <div id="loading" class="loading" style="display: none;">
+      <div class="spinner"></div>
+      <p>Analyzing data...</p>
+    </div>
+    
+    <div id="error" class="error-message" style="display: none;"></div>
+    
+    <div id="dashboard" class="dashboard"></div>
   </div>
   
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-  <script type="module">
+  <script>
     const queryInput = document.getElementById('queryInput');
     const askButton = document.getElementById('askButton');
-    const responseDiv = document.getElementById('response');
+    const loading = document.getElementById('loading');
+    const errorDiv = document.getElementById('error');
+    const dashboard = document.getElementById('dashboard');
     
-    // Example chips
+    // Example chip click handlers
     document.querySelectorAll('.example-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         queryInput.value = chip.dataset.query;
@@ -251,113 +287,140 @@
       });
     });
     
-    // Enter key
+    // Enter key handler
     queryInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') askQuestion();
     });
     
+    // Ask button handler
     askButton.addEventListener('click', askQuestion);
     
     async function askQuestion() {
       const query = queryInput.value.trim();
       if (!query) return;
       
+      // Show loading, hide previous results
+      loading.style.display = 'block';
+      errorDiv.style.display = 'none';
+      dashboard.style.display = 'none';
+      dashboard.innerHTML = '';
       askButton.disabled = true;
-      responseDiv.innerHTML = '<div class="loading">🤔 Thinking...</div>';
-      responseDiv.classList.add('visible');
       
       try {
-        const res = await fetch(`/api/ask?q=${encodeURIComponent(query)}`);
-        const data = await res.json();
+        const response = await fetch(`/api/ask?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
         
-        if (data.error) {
-          responseDiv.innerHTML = `<div class="error-message">${data.error}</div>`;
-          return;
+        if (!response.ok) {
+          throw new Error(data.error || 'Request failed');
         }
         
-        if (data.isDashboard) {
-          renderDashboard(data.answer);
-        } else {
-          responseDiv.innerHTML = `<div class="summary">${escapeHtml(data.answer)}</div>`;
-        }
+        renderDashboard(data.answer);
+        
       } catch (error) {
-        responseDiv.innerHTML = `<div class="error-message">Failed to get response: ${error.message}</div>`;
+        errorDiv.textContent = `Error: ${error.message}`;
+        errorDiv.style.display = 'block';
       } finally {
+        loading.style.display = 'none';
         askButton.disabled = false;
       }
     }
     
-    function renderDashboard(dashboard) {
-      let html = '';
-      
-      if (dashboard.summary) {
-        html += `<div class="summary">${escapeHtml(dashboard.summary)}</div>`;
+    function renderDashboard(answer) {
+      // Handle plain text answers
+      if (typeof answer === 'string') {
+        dashboard.innerHTML = `
+          <div class="tile text-info">
+            <div class="tile-title">Response</div>
+            <div class="text-content">${marked.parse(answer)}</div>
+          </div>
+        `;
+        dashboard.style.display = 'block';
+        return;
       }
       
-      html += '<div class="blocks">';
+      // Handle dashboard responses
+      let html = '';
       
-      for (const block of dashboard.blocks) {
+      // Summary
+      if (answer.summary) {
+        html += `<div class="summary">${marked.parse(answer.summary)}</div>`;
+      }
+      
+      // Tiles
+      html += '<div class="tiles">';
+      
+      for (const block of answer.blocks) {
         if (block.type === 'text') {
-          html += renderTextBlock(block);
+          html += renderTextTile(block);
         } else if (block.type === 'metric') {
-          html += renderMetricBlock(block);
+          html += renderMetricTile(block);
         } else if (block.type === 'chart') {
-          html += renderChartBlock(block);
+          html += renderChartTile(block);
         }
       }
       
       html += '</div>';
-      responseDiv.innerHTML = html;
       
-      // Render charts after DOM update
-      setTimeout(() => {
-        dashboard.blocks.forEach((block, index) => {
-          if (block.type === 'chart') {
-            renderChart(block, `chart-${index}`);
-          }
-        });
-      }, 10);
+      dashboard.innerHTML = html;
+      dashboard.style.display = 'block';
+      
+      // Render charts after DOM is ready
+      setTimeout(renderAllCharts, 0);
     }
     
-    function renderTextBlock(block) {
+    function renderTextTile(block) {
       const variant = block.variant || 'info';
+      const title = block.title ? `<div class="tile-title">${block.title}</div>` : '';
       return `
-        <div class="block full-width text-variant-${variant}">
-          ${block.title ? `<div class="block-title">${escapeHtml(block.title)}</div>` : ''}
-          <div>${escapeHtml(block.content)}</div>
+        <div class="tile text-${variant}">
+          ${title}
+          <div class="text-content">${marked.parse(block.content)}</div>
         </div>
       `;
     }
     
-    function renderMetricBlock(block) {
-      const statusClass = block.status ? `metric-status-${block.status}` : '';
-      let trendHtml = '';
-      
-      if (block.trend) {
-        const trendClass = `trend-${block.trend.direction}`;
-        const arrow = block.trend.direction === 'up' ? '↑' : block.trend.direction === 'down' ? '↓' : '→';
-        const pct = block.trend.percentage ? ` ${block.trend.percentage}%` : '';
-        const period = block.trend.period ? ` ${block.trend.period}` : '';
-        trendHtml = `<div class="trend ${trendClass}">${arrow}${pct}${period}</div>`;
-      }
+    function renderMetricTile(block) {
+      const status = block.status || '';
+      const statusClass = status ? `metric ${status}` : 'metric';
+      const trend = block.trend ? renderTrend(block.trend) : '';
       
       return `
-        <div class="block">
-          <div class="block-title">${escapeHtml(block.title)}</div>
-          <div class="metric-value ${statusClass}">
+        <div class="tile ${statusClass}">
+          <div class="tile-title">${block.title}</div>
+          <div class="metric-value">
             ${block.value.toLocaleString()}
-            <span class="metric-unit">${escapeHtml(block.unit)}</span>
+            <span class="metric-unit">${block.unit}</span>
           </div>
-          ${trendHtml}
+          ${trend}
         </div>
       `;
     }
     
-    function renderChartBlock(block) {
-      const chartId = `chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    function renderTrend(trend) {
+      const arrows = {
+        up: '↑',
+        down: '↓',
+        stable: '→'
+      };
+      
+      const percentage = trend.percentage 
+        ? `${trend.direction === 'down' ? '-' : '+'}${trend.percentage.toFixed(1)}%`
+        : '';
+      
       return `
-        <div class="block full-width">
-          <div class="block-title">${escapeHtml(block.title)}</div>
+        <div class="metric-trend">
+          <span class="trend-arrow ${trend.direction}">${arrows[trend.direction]}</span>
+          ${percentage}
+          ${trend.period ? `<span>${trend.period}</span>` : ''}
+        </div>
+      `;
+    }
+    
+    function renderChartTile(block) {
+      const chartId = `chart-${Math.random().toString(36).substr(2, 9)}`;
+      return `
+        <div class="tile chart" data-chart='${JSON.stringify(block)}'>
+          <div class="tile-title">${block.title}</div>
           <div class="chart-container">
             <canvas id="${chartId}"></canvas>
           </div>
@@ -365,23 +428,26 @@
       `;
     }
     
-    function renderChart(block, canvasId) {
-      const canvas = document.getElementById(canvasId);
-      if (!canvas) return;
-      
-      const datasets = block.series.map(s => ({
-        label: s.name,
-        data: s.data.map(d => ({ x: d.x, y: d.y })),
-        borderColor: s.color || '#3b82f6',
-        backgroundColor: s.color ? `${s.color}20` : '#3b82f620',
-        tension: 0.3,
-        fill: block.chartType === 'area'
-      }));
-      
-      const annotations = {};
-      if (block.annotations) {
-        block.annotations.forEach((ann, i) => {
-          if (ann.type === 'threshold') {
+    function renderAllCharts() {
+      document.querySelectorAll('.tile.chart').forEach(tile => {
+        const chartData = JSON.parse(tile.dataset.chart);
+        const canvas = tile.querySelector('canvas');
+        
+        // Prepare datasets
+        const datasets = chartData.series.map(series => ({
+          label: series.name,
+          data: series.data.map(d => ({ x: d.x, y: d.y })),
+          borderColor: series.color || '#3b82f6',
+          backgroundColor: series.color ? `${series.color}33` : '#3b82f633',
+          borderWidth: 3,
+          tension: 0.4,
+          fill: chartData.chartType === 'area'
+        }));
+        
+        // Prepare annotations
+        const annotations = {};
+        if (chartData.annotations) {
+          chartData.annotations.forEach((ann, i) => {
             annotations[`line${i}`] = {
               type: 'line',
               yMin: ann.value,
@@ -392,49 +458,52 @@
               label: {
                 display: true,
                 content: ann.label,
-                position: 'end'
+                position: 'start'
               }
             };
-          }
-        });
-      }
-      
-      new Chart(canvas, {
-        type: block.chartType === 'bar' ? 'bar' : 'line',
-        data: { datasets },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            x: {
-              type: block.xAxis.type === 'time' ? 'time' : 'linear',
-              title: {
-                display: true,
-                text: block.xAxis.label
+          });
+        }
+        
+        new Chart(canvas, {
+          type: chartData.chartType === 'bar' ? 'bar' : 'line',
+          data: { datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                labels: { color: '#f1f5f9' }
+              },
+              annotation: {
+                annotations
               }
             },
-            y: {
-              title: {
-                display: true,
-                text: block.yAxis.unit ? `${block.yAxis.label} (${block.yAxis.unit})` : block.yAxis.label
+            scales: {
+              x: {
+                type: chartData.xAxis.type === 'time' ? 'time' : 'category',
+                title: {
+                  display: true,
+                  text: chartData.xAxis.label,
+                  color: '#94a3b8'
+                },
+                ticks: { color: '#94a3b8' },
+                grid: { color: '#475569' }
               },
-              min: block.yAxis.min,
-              max: block.yAxis.max
-            }
-          },
-          plugins: {
-            annotation: {
-              annotations
+              y: {
+                title: {
+                  display: true,
+                  text: chartData.yAxis.label + (chartData.yAxis.unit ? ` (${chartData.yAxis.unit})` : ''),
+                  color: '#94a3b8'
+                },
+                min: chartData.yAxis.min,
+                max: chartData.yAxis.max,
+                ticks: { color: '#94a3b8' },
+                grid: { color: '#475569' }
+              }
             }
           }
-        }
+        });
       });
-    }
-    
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
     }
   </script>
 </body>

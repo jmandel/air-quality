@@ -158,8 +158,8 @@ function renderDashboard(answer: DashboardResponse) {
   // Render blocks
   if (answer.blocks && answer.blocks.length > 0) {
     html += '<div class="tiles">';
-    for (const block of answer.blocks) {
-      html += renderBlock(block);
+    for (let i = 0; i < answer.blocks.length; i++) {
+      html += renderBlock(answer.blocks[i], i);
     }
     html += "</div>";
   }
@@ -170,19 +170,19 @@ function renderDashboard(answer: DashboardResponse) {
   // Render any charts after DOM is ready
   setTimeout(() => {
     answer.blocks?.forEach((block, index) => {
-      if (block.type === "chart" && block.chartData) {
-        renderChart(`chart-${index}`, block.chartData, block.chartType || "line");
+      if (block.type === "chart") {
+        renderChart(`chart-${index}`, block);
       }
     });
   }, 0);
 }
 
-function renderBlock(block: Block): string {
+function renderBlock(block: Block, index?: number): string {
   switch (block.type) {
     case "text":
       return `
         <div class="tile text-${block.variant || "info"}">
-          <div class="tile-title">${escapeHtml(block.title)}</div>
+          <div class="tile-title">${escapeHtml(block.title || "")}</div>
           <div class="text-content">
             ${escapeHtml(block.content)}
           </div>
@@ -195,7 +195,7 @@ function renderBlock(block: Block): string {
         ? `
           <div class="metric-trend">
             <span class="trend-arrow ${block.trend.direction}">${getTrendArrow(block.trend.direction)}</span>
-            <span>${block.trend.label}</span>
+            <span>${block.trend.label || `${block.trend.percentage || ""}% ${block.trend.period || ""}`}</span>
           </div>
         `
         : "";
@@ -213,7 +213,7 @@ function renderBlock(block: Block): string {
     }
 
     case "chart": {
-      const chartId = `chart-${Math.random().toString(36).substr(2, 9)}`;
+      const chartId = index !== undefined ? `chart-${index}` : `chart-${Math.random().toString(36).substr(2, 9)}`;
       return `
         <div class="tile chart">
           <div class="tile-title">${escapeHtml(block.title)}</div>
@@ -237,30 +237,67 @@ function getTrendArrow(direction: "up" | "down" | "stable"): string {
   }
 }
 
-function renderChart(elementId: string, chartData: any, chartType: string) {
+function renderChart(elementId: string, block: any) {
   const canvas = document.getElementById(elementId) as HTMLCanvasElement;
-  if (!canvas) return;
+  if (!canvas) {
+    console.error(`Canvas not found: ${elementId}`);
+    return;
+  }
 
-  // Use Chart.js if available
-  if (typeof (window as any).Chart !== "undefined") {
-    new (window as any).Chart(canvas, {
-      type: chartType,
-      data: chartData,
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            display: true,
-            position: "bottom",
-          },
+  // Check if Chart.js is available
+  if (typeof (window as any).Chart === "undefined") {
+    console.error("Chart.js not loaded");
+    canvas.parentElement!.innerHTML = `<div style="padding: 20px; color: var(--muted)">Chart.js not loaded</div>`;
+    return;
+  }
+
+  // Convert our data format to Chart.js format
+  const datasets = block.series.map((s: any) => ({
+    label: s.name,
+    data: s.data.map((d: any) => ({ x: d.x, y: d.y })),
+    borderColor: s.color || "#3b82f6",
+    backgroundColor: s.color ? `${s.color}33` : "#3b82f633",
+    tension: 0.3,
+  }));
+
+  new (window as any).Chart(canvas, {
+    type: block.chartType || "line",
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: "bottom",
         },
       },
-    });
-  }
+      scales: {
+        x: {
+          type: block.xAxis.type === "time" ? "time" : "category",
+          title: {
+            display: true,
+            text: block.xAxis.label,
+          },
+          time: block.xAxis.type === "time" ? {
+            displayFormats: {
+              hour: "HH:mm",
+              minute: "HH:mm",
+            },
+          } : undefined,
+        },
+        y: {
+          title: {
+            display: true,
+            text: block.yAxis.unit ? `${block.yAxis.label} (${block.yAxis.unit})` : block.yAxis.label,
+          },
+          min: block.yAxis.min,
+          max: block.yAxis.max,
+        },
+      },
+    },
+  });
 }
-
-// Load history
 async function loadHistory() {
   try {
     const response = await fetch("/api/ask/history");

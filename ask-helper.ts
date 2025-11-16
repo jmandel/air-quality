@@ -1,25 +1,46 @@
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import type { DashboardResponse } from "./dashboard-types";
-
 import { saveToHistory } from "./ask-history";
+import { findPreviousScript, getQuestionCount } from "./ask-history-lookup";
+
 export async function askShelley(question: string): Promise<{ 
   answer: DashboardResponse | string, 
   conversationId: string,
-  scriptPath?: string 
+  scriptPath?: string,
+  usedCachedScript?: boolean,
+  previousId?: string
 }> {
-  // Create temp directory for Shelley to work in
+  // Create temp directory for script execution
   const tempDir = await mkdtemp(join(tmpdir(), "airq-ask-"));
   const analyzePath = join(tempDir, "analyze.ts");
   
-  // Get current time for context
-  const now = new Date().toISOString();
-  const nowMs = Date.now();
-  const sixHoursAgo = nowMs - (6 * 60 * 60 * 1000);
+  let scriptContent: string;
+  let usedCachedScript = false;
+  let previousId: string | undefined;
   
-  // Craft the comprehensive prompt for Shelley
-  const prompt = `You are helping analyze air quality data from an Apollo AIR-1 sensor.
+  // Check if we have a previous script for this exact question
+  const previousScript = await findPreviousScript(question);
+  
+  if (previousScript) {
+    console.log(`♻️  Using cached script from ${previousScript.previousId}`);
+    scriptContent = previousScript.scriptContent;
+    usedCachedScript = true;
+    previousId = previousScript.previousId;
+    
+    // Write the cached script to temp directory
+    await writeFile(analyzePath, scriptContent);
+  } else {
+    console.log(`🤖 No cached script found, calling Shelley...`);
+    
+    // Get current time for context
+    const now = new Date().toISOString();
+    const nowMs = Date.now();
+    const sixHoursAgo = nowMs - (6 * 60 * 60 * 1000);
+    
+    // Craft the comprehensive prompt for Shelley
+    const prompt = `You are helping analyze air quality data from an Apollo AIR-1 sensor.
 
 USER QUESTION: "${question}"
 
@@ -169,45 +190,41 @@ try {
 
 Now write analyze.ts to ${analyzePath} that answers: "${question}"`;
 
-  console.log(`🤖 Calling Shelley CLI...`);
-
-  // Invoke Shelley using CLI
-  const shelleyProc = Bun.spawn(["shelley", "-config", "/exe.dev/shelley.json", "-model", "claude-sonnet-4.5", "prompt", "-timeout", "180s", prompt], {
-    stdout: "pipe",
-    stderr: "pipe",
-    cwd: tempDir,
-    env: {
-      ...process.env,
-      PATH: `${process.env.HOME}/.bun/bin:/usr/local/bin:/usr/bin:/bin`
+    // Invoke Shelley using CLI
+    const shelleyProc = Bun.spawn(["shelley", "-config", "/exe.dev/shelley.json", "-model", "claude-sonnet-4.5", "prompt", "-timeout", "180s", prompt], {
+      stdout: "pipe",
+      stderr: "pipe",
+      cwd: tempDir,
+      env: {
+        ...process.env,
+        PATH: `${process.env.HOME}/.bun/bin:/usr/local/bin:/usr/bin:/bin`
+      }
+    });
+    
+    const shelleyStdout = await new Response(shelleyProc.stdout).text();
+    const shelleyStderr = await new Response(shelleyProc.stderr).text();
+    const shelleyExit = await shelleyProc.exited;
+    
+    console.log(`📝 Shelley exit: ${shelleyExit}, output: ${shelleyStdout.length} chars`);
+    if (shelleyStderr) console.log(`📝 Shelley stderr:\n${shelleyStderr}`);
+    
+    if (shelleyExit !== 0) {
+      throw new Error(`Shelley failed with exit code ${shelleyExit}: ${shelleyStderr}`);
     }
-  });
-  
-  const shelleyStdout = await new Response(shelleyProc.stdout).text();
-  const shelleyStderr = await new Response(shelleyProc.stderr).text();
-  const shelleyExit = await shelleyProc.exited;
-  
-  console.log(`📝 Shelley exit: ${shelleyExit}, output: ${shelleyStdout.length} chars`);
-  if (shelleyStderr) console.log(`📝 Shelley stderr:\n${shelleyStderr}`);
-  
-  if (shelleyExit !== 0) {
-    throw new Error(`Shelley failed with exit code ${shelleyExit}: ${shelleyStderr}`);
+    
+    // Check if analyze.ts was created
+    const scriptExists = await Bun.file(analyzePath).exists();
+    console.log(`📄 Script exists at ${analyzePath}: ${scriptExists}`);
+    
+    if (!scriptExists) {
+      console.error("⚠️ analyze.ts was not created by Shelley");
+      console.error("📋 Shelley response:\n", shelleyStdout.substring(0, 1000));
+      throw new Error("Shelley did not create the analyze script");
+    }
+    
+    scriptContent = await Bun.file(analyzePath).text();
+    console.log(`✅ Script created (${scriptContent.length} bytes)`);
   }
-  
-  // For conversation ID, we'll use a placeholder since we're not using the HTTP API
-  const conversationId = `cli-${Date.now()}`;
-  
-  // Check if analyze.ts was created
-  const scriptExists = await Bun.file(analyzePath).exists();
-  console.log(`📄 Script exists at ${analyzePath}: ${scriptExists}`);
-  
-  if (!scriptExists) {
-    console.error("⚠️ analyze.ts was not created by Shelley");
-    console.error("📋 Shelley response:\n", shelleyStdout.substring(0, 1000));
-    throw new Error("Shelley did not create the analyze script");
-  }
-  
-  const scriptContent = await Bun.file(analyzePath).text();
-  console.log(`✅ Script created (${scriptContent.length} bytes)`);
   
   // Run the analyze.ts script
   console.log("🚀 Executing analyze.ts...");
@@ -236,9 +253,14 @@ Now write analyze.ts to ${analyzePath} that answers: "${question}"`;
   const dashboardResponse = JSON.parse(jsonOutput.trim()) as DashboardResponse;
   console.log(`✅ Parsed dashboard with ${dashboardResponse.blocks.length} blocks`);
   
+  // Count how many times this question has been asked
+  const questionCount = await getQuestionCount(question);
+  console.log(`📊 Question asked ${questionCount} time(s) before`);
+  
   // Save to history
+  const conversationId = `cli-${Date.now()}`;
   const historyId = await saveToHistory(question, dashboardResponse, conversationId, scriptContent);
-  console.log(`💾 Saved to history: ${historyId}`);
+  console.log(`💾 Saved to history: ${historyId} ${usedCachedScript ? '(reused script)' : '(new script)'}`);
   
   // Clean up temp directory
   await rm(tempDir, { recursive: true, force: true }).catch(() => {});
@@ -246,6 +268,8 @@ Now write analyze.ts to ${analyzePath} that answers: "${question}"`;
   return {
     answer: dashboardResponse,
     conversationId,
-    scriptPath: analyzePath
+    scriptPath: analyzePath,
+    usedCachedScript,
+    previousId
   };
 }

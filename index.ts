@@ -659,7 +659,7 @@ const server = serve({
         }
         
         try {
-          const { answer, conversationId, rawOutput } = await askShelley(query);
+          const { answer, conversationId, usedCachedScript, previousId } = await askShelley(query);
           
           // Check if answer is a DashboardResponse or plain text
           const isDashboard = typeof answer === 'object' && answer !== null && 'blocks' in answer;
@@ -669,6 +669,8 @@ const server = serve({
             answer,
             isDashboard,
             conversationId,
+            usedCachedScript,
+            previousId,
             timestamp: new Date().toISOString()
           });
           

@@ -99,28 +99,105 @@ async function askQuestion() {
   dashboardEl.innerHTML = "";
   askBtn.disabled = true;
 
+  const progressEl = document.getElementById("progress-messages") as HTMLElement;
+  progressEl.innerHTML = "<p>Initializing...</p>";
+
   // Destroy existing charts
   charts.forEach((chart) => chart.destroy());
   charts.length = 0;
 
-  try {
-    const response = await fetch(
-      `/api/ask?q=${encodeURIComponent(query)}`
-    );
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || "Request failed");
+  // Use EventSource for streaming
+  const eventSource = new EventSource(`/api/ask/stream?q=${encodeURIComponent(query)}`);
+  
+  let dashboardResult: any = null;
+  
+  eventSource.addEventListener("status", (e: any) => {
+    const data = JSON.parse(e.data);
+    progressEl.innerHTML += `<p>${escapeHtml(data)}</p>`;
+    progressEl.scrollTop = progressEl.scrollHeight;
+  });
+  
+  eventSource.addEventListener("cached", (e: any) => {
+    progressEl.innerHTML += `<p style="color: var(--success)">♻️ Using cached script</p>`;
+    progressEl.scrollTop = progressEl.scrollHeight;
+  });
+  
+  eventSource.addEventListener("shelley_progress", (e: any) => {
+    const data = JSON.parse(e.data);
+    progressEl.innerHTML += `<p style="font-size: 12px; color: var(--muted)">${escapeHtml(data)}</p>`;
+    progressEl.scrollTop = progressEl.scrollHeight;
+  });
+  
+  eventSource.addEventListener("shelley_complete", (e: any) => {
+    const data = JSON.parse(e.data);
+    progressEl.innerHTML += `<p style="color: var(--success)">✅ Script generated (${data.outputLength} bytes)</p>`;
+    progressEl.scrollTop = progressEl.scrollHeight;
+  });
+  
+  eventSource.addEventListener("script_created", (e: any) => {
+    const data = JSON.parse(e.data);
+    progressEl.innerHTML += `<p>📄 Script created (${data.size} bytes)</p>`;
+    progressEl.scrollTop = progressEl.scrollHeight;
+  });
+  
+  eventSource.addEventListener("script_progress", (e: any) => {
+    const data = JSON.parse(e.data);
+    progressEl.innerHTML += `<p style="font-size: 12px; color: var(--muted)">${escapeHtml(data)}</p>`;
+    progressEl.scrollTop = progressEl.scrollHeight;
+  });
+  
+  eventSource.addEventListener("script_complete", (e: any) => {
+    progressEl.innerHTML += `<p style="color: var(--success)">✅ Analysis complete</p>`;
+    progressEl.scrollTop = progressEl.scrollHeight;
+  });
+  
+  eventSource.addEventListener("result", (e: any) => {
+    dashboardResult = JSON.parse(e.data);
+  });
+  
+  eventSource.addEventListener("saved", (e: any) => {
+    progressEl.innerHTML += `<p style="color: var(--success)">💾 Saved to history</p>`;
+    progressEl.scrollTop = progressEl.scrollHeight;
+    eventSource.close();
+    
+    if (dashboardResult) {
+      loadingEl.classList.add("hidden");
+      askBtn.disabled = false;
+      renderDashboard(dashboardResult);
+      loadHistory();
     }
-
-    renderDashboard(data.answer);
-  } catch (error: any) {
-    errorEl.textContent = `Error: ${error.message}`;
+  });
+  
+  eventSource.addEventListener("error", (e: any) => {
+    try {
+      const data = JSON.parse(e.data);
+      errorEl.textContent = `Error: ${data.message || "Unknown error"}`;
+    } catch {
+      errorEl.textContent = "Error: Connection error";
+    }
     errorEl.classList.remove("hidden");
-  } finally {
     loadingEl.classList.add("hidden");
     askBtn.disabled = false;
-  }
+    eventSource.close();
+  });
+  
+  eventSource.onerror = () => {
+    if (eventSource.readyState === EventSource.CLOSED) {
+      // Stream ended normally
+      if (dashboardResult) {
+        loadingEl.classList.add("hidden");
+        askBtn.disabled = false;
+        renderDashboard(dashboardResult);
+        loadHistory();
+      }
+    } else {
+      errorEl.textContent = "Error: Connection failed";
+      errorEl.classList.remove("hidden");
+      loadingEl.classList.add("hidden");
+      askBtn.disabled = false;
+      eventSource.close();
+    }
+  };
 }
 
 function renderDashboard(answer: DashboardResponse | string) {

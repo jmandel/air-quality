@@ -6,6 +6,7 @@ Chart.register(annotationPlugin);
 
 // TypeScript interfaces matching dashboard-types.ts
 console.log("🚀 ask.ts module loading...");
+
 interface DashboardResponse {
   summary: string;
   blocks: Array<TextBlock | MetricBlock | ChartBlock>;
@@ -50,16 +51,6 @@ interface ChartBlock {
   }>;
 }
 
-// Legacy format support
-interface LegacyDashboardResponse {
-  answer?: string;
-  textAnswer?: string;
-  data?: any;
-  visualType?: "line" | "bar" | "gauge" | "table" | "none";
-  visualization?: any;
-  timeRange?: string;
-}
-
 // DOM elements
 const queryInput = document.getElementById("query-input") as HTMLInputElement;
 const askBtn = document.getElementById("ask-btn") as HTMLButtonElement;
@@ -72,9 +63,7 @@ const charts: Chart[] = [];
 
 // Initialize
 function init() {
-  // Example chip click handlers
   document.querySelectorAll(".example-chip").forEach((chip) => {
-console.log("ask.ts module loaded");
     chip.addEventListener("click", () => {
       const query = chip.getAttribute("data-query");
       if (query) {
@@ -84,19 +73,17 @@ console.log("ask.ts module loaded");
     });
   });
 
-  // Enter key handler
   queryInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") {
       askQuestion();
     }
   });
 
-  // Ask button handler
   askBtn.addEventListener("click", askQuestion);
-
-  // Focus input on load
   queryInput.focus();
 }
+
+console.log("ask.ts module loaded");
 
 async function askQuestion() {
   const query = queryInput.value.trim();
@@ -193,7 +180,6 @@ async function askQuestion() {
   
   eventSource.onerror = () => {
     if (eventSource.readyState === EventSource.CLOSED) {
-      // Stream ended normally
       if (dashboardResult) {
         loadingEl.classList.add("hidden");
         askBtn.disabled = false;
@@ -210,42 +196,7 @@ async function askQuestion() {
   };
 }
 
-function renderDashboard(answer: DashboardResponse | LegacyDashboardResponse | string) {
-  // Handle plain text answers
-  if (typeof answer === "string") {
-    dashboardEl.innerHTML = `
-      <div class="tile text-info">
-        <div class="tile-title">Response</div>
-        <div class="text-content">${escapeHtml(answer)}</div>
-      </div>
-    `;
-    dashboardEl.classList.remove("hidden");
-    return;
-  }
-
-  // Check if it's the new format (has blocks)
-  if ('blocks' in answer && answer.blocks) {
-    renderNewFormat(answer as DashboardResponse);
-    return;
-  }
-
-  // Handle legacy format (has answer/textAnswer)
-  if ('answer' in answer || 'textAnswer' in answer) {
-    renderLegacyFormat(answer as LegacyDashboardResponse);
-    return;
-  }
-
-  // Fallback
-  dashboardEl.innerHTML = `
-    <div class="tile text-error">
-      <div class="tile-title">Error</div>
-      <div class="text-content">Unknown response format</div>
-    </div>
-  `;
-  dashboardEl.classList.remove("hidden");
-}
-
-function renderNewFormat(answer: DashboardResponse) {
+function renderDashboard(answer: DashboardResponse) {
   let html = "";
 
   // Summary
@@ -273,20 +224,6 @@ function renderNewFormat(answer: DashboardResponse) {
 
   // Render charts after DOM is ready
   setTimeout(() => renderAllCharts(answer.blocks), 0);
-}
-
-function renderLegacyFormat(answer: LegacyDashboardResponse) {
-  const text = answer.answer || answer.textAnswer || "No response";
-  
-  dashboardEl.innerHTML = `
-    <div class="tiles">
-      <div class="tile text-info">
-        <div class="tile-title">Response</div>
-        <div class="text-content">${escapeHtml(text)}</div>
-      </div>
-    </div>
-  `;
-  dashboardEl.classList.remove("hidden");
 }
 
 function renderTextTile(block: TextBlock): string {

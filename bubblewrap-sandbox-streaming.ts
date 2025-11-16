@@ -202,6 +202,8 @@ function buildBwrapArgs(workDir: string, dbPath: string, allowNetwork: boolean):
 }
 
 function buildShelleyBwrapArgs(workDir: string): string[] {
+  const bunDir = join(process.env.HOME || "/home/exedev", ".bun");
+  
   const args = [
     "--ro-bind", "/usr", "/usr",
     "--ro-bind", "/lib", "/lib",
@@ -211,6 +213,7 @@ function buildShelleyBwrapArgs(workDir: string): string[] {
     "--ro-bind", "/etc/resolv.conf", "/etc/resolv.conf",
     "--ro-bind", "/etc/ssl", "/etc/ssl",
     "--ro-bind", "/etc/ca-certificates", "/etc/ca-certificates",
+    "--ro-bind", bunDir, "/bun",  // Mount Bun for testing scripts
     "--bind", workDir, "/work",
     "--dev-bind", "/dev", "/dev",
     "--proc", "/proc",

@@ -203,6 +203,7 @@ function buildBwrapArgs(workDir: string, dbPath: string, allowNetwork: boolean):
 
 function buildShelleyBwrapArgs(workDir: string): string[] {
   const bunDir = join(process.env.HOME || "/home/exedev", ".bun");
+  const dbPath = "/home/exedev/app/db.sqlite";
   
   const args = [
     "--ro-bind", "/usr", "/usr",
@@ -214,6 +215,7 @@ function buildShelleyBwrapArgs(workDir: string): string[] {
     "--ro-bind", "/etc/ssl", "/etc/ssl",
     "--ro-bind", "/etc/ca-certificates", "/etc/ca-certificates",
     "--ro-bind", bunDir, "/bun",  // Mount Bun for testing scripts
+    "--ro-bind", dbPath, "/db/db.sqlite",  // Mount database for testing scripts
     "--bind", workDir, "/work",
     "--dev-bind", "/dev", "/dev",
     "--proc", "/proc",

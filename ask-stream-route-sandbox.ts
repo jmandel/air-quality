@@ -9,10 +9,11 @@ import { saveToHistory } from "./ask-history";
 export async function handleAskStreamSandboxed(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const query = url.searchParams.get("q") || url.searchParams.get("query");
+  const historyId = url.searchParams.get("id"); // Optional: replay a specific history item
   
-  if (!query) {
+  if (!query && !historyId) {
     return Response.json({ 
-      error: "Missing query parameter. Use ?q=your_question" 
+      error: "Missing query parameter. Use ?q=your_question or ?id=history_id" 
     }, { status: 400 });
   }
   
@@ -20,10 +21,31 @@ export async function handleAskStreamSandboxed(req: Request): Promise<Response> 
   const tempDir = await mkdtemp(join(tmpdir(), "airq-ask-"));
   const analyzePath = join(tempDir, "analyze.ts");
   
-  // Check for cached script
-  const previousScript = await findPreviousScript(query);
-  const useCachedScript = !!previousScript;
-  const scriptContent = previousScript?.scriptContent;
+  let useCachedScript = false;
+  let scriptContent: string | undefined;
+  let actualQuery = query;
+  
+  // If history ID provided, load that script directly
+  if (historyId) {
+    const { getHistoryMetadata, ASKED_DIR } = await import("./ask-history");
+    const metadata = await getHistoryMetadata(historyId);
+    if (!metadata) {
+      return Response.json({ error: "History item not found" }, { status: 404 });
+    }
+    actualQuery = metadata.question;
+    const scriptPath = join(ASKED_DIR, `${historyId}.ts`);
+    const { existsSync } = await import("fs");
+    if (existsSync(scriptPath)) {
+      const { readFile } = await import("fs/promises");
+      scriptContent = await readFile(scriptPath, 'utf-8');
+      useCachedScript = true;
+    }
+  } else {
+    // Check for cached script by question text
+    const previousScript = await findPreviousScript(query!);
+    useCachedScript = !!previousScript;
+    scriptContent = previousScript?.scriptContent;
+  }
   
   // Build prompt (only if not cached)
   const now = new Date().toISOString();
@@ -94,7 +116,7 @@ Now write analyze.ts to ${analyzePath} that answers: "${query}"`;
         let dashboardResult: any;
         
         for await (const event of streamShelleyExecutionSandboxed(
-          query,
+          actualQuery || query,
           analyzePath,
           tempDir,
           prompt,
@@ -117,7 +139,7 @@ Now write analyze.ts to ${analyzePath} that answers: "${query}"`;
         if (dashboardResult && finalScriptContent) {
           const conversationId = `cli-${Date.now()}`;
           const historyId = await saveToHistory(
-            query,
+            actualQuery || query,
             dashboardResult,
             conversationId,
             finalScriptContent,

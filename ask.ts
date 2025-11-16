@@ -493,30 +493,88 @@ async function loadHistory() {
 }
 
 async function loadHistoryItem(id: string) {
+  // First fetch metadata to get the question text
   try {
-    // Show loading indicator
-    errorEl.classList.add("hidden");
-    dashboardEl.classList.add("hidden");
-    loadingEl.classList.remove("hidden");
-    progressEl.textContent = "Loading previous query...";
+    const metaResponse = await fetch(`/api/ask/history?limit=1000`);
+    if (!metaResponse.ok) throw new Error("Failed to load history");
+    const historyData = await metaResponse.json();
+    const item = historyData.items.find((i: any) => i.id === id);
+    if (!item) throw new Error("History item not found");
     
-    const response = await fetch(`/api/ask/item/${id}`);
-    if (!response.ok) throw new Error("Failed to load history item");
-    
-    const item = await response.json();
-    
+    // Update query input and URL
     queryInput.value = item.question;
-    
-    // Update URL with query parameter
     const url = new URL(window.location.href);
     url.searchParams.set('q', item.question);
     window.history.pushState({ query: item.question }, '', url);
-    loadingEl.classList.add("hidden");
-    errorEl.classList.add("hidden");
-    renderDashboard(item.latestAnswer.answer);
     
-    // Scroll to dashboard
-    dashboardEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Now use the streaming endpoint with the history ID
+    // This will re-execute the saved script in the sandbox
+    errorEl.classList.add("hidden");
+    dashboardEl.classList.add("hidden");
+    loadingEl.classList.remove("hidden");
+    progressEl.textContent = ""; // Clear previous content
+    askBtn.disabled = true;
+    
+    let dashboardResult: DashboardResponse | null = null;
+    
+    // Use the streaming endpoint with ?id= parameter to replay this specific script
+    const eventSource = new EventSource(`/api/ask/stream?id=${encodeURIComponent(id)}`);
+    
+    eventSource.addEventListener("status", (e: any) => {
+      const data = JSON.parse(e.data);
+      progressEl.textContent += `${data}\n`;
+      progressEl.scrollTop = progressEl.scrollHeight;
+    });
+    
+    eventSource.addEventListener("cached", (e: any) => {
+      progressEl.textContent += "♻️ Using saved script from history\n";
+      progressEl.scrollTop = progressEl.scrollHeight;
+    });
+    
+    eventSource.addEventListener("script_progress", (e: any) => {
+      const data = JSON.parse(e.data);
+      progressEl.textContent += `${data}\n`;
+      progressEl.scrollTop = progressEl.scrollHeight;
+    });
+    
+    eventSource.addEventListener("result", (e: any) => {
+      dashboardResult = JSON.parse(e.data);
+    });
+    
+    eventSource.addEventListener("saved", (e: any) => {
+      progressEl.textContent += "✅ Execution complete\n";
+      progressEl.scrollTop = progressEl.scrollHeight;
+      eventSource.close();
+      
+      if (dashboardResult) {
+        loadingEl.classList.add("hidden");
+        askBtn.disabled = false;
+        renderDashboard(dashboardResult);
+        dashboardEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+    
+    eventSource.addEventListener("error", (e: any) => {
+      try {
+        const data = JSON.parse(e.data);
+        errorEl.textContent = `Error: ${data.message || "Unknown error"}`;
+      } catch {
+        errorEl.textContent = "Error: Connection error";
+      }
+      errorEl.classList.remove("hidden");
+      loadingEl.classList.add("hidden");
+      askBtn.disabled = false;
+      eventSource.close();
+    });
+    
+    eventSource.onerror = () => {
+      errorEl.textContent = "Error: Connection lost";
+      errorEl.classList.remove("hidden");
+      loadingEl.classList.add("hidden");
+      askBtn.disabled = false;
+      eventSource.close();
+    };
+    
   } catch (err) {
     console.error("Failed to load history item:", err);
     errorEl.textContent = "Failed to load history item";

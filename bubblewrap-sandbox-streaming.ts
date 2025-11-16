@@ -33,10 +33,11 @@ export async function* streamShelleyInSandbox(
   // Create Shelley config
   await createShelleyConfig(workDir);
   
+  // Add -debug flag and stream BOTH stdout and stderr with NO filtering
   const bwrapArgs = buildShelleyBwrapArgs(workDir);
   
   const proc = spawn(
-    ["bwrap", ...bwrapArgs, "/usr/local/bin/shelley", "-config", "/work/shelley-config.json", "prompt", "-timeout", "180s", prompt],
+    ["bwrap", ...bwrapArgs, "/usr/local/bin/shelley", "-debug", "-config", "/work/shelley-config.json", "prompt", "-timeout", "180s", prompt],
     {
       stdout: "pipe",
       stderr: "pipe",
@@ -54,41 +55,45 @@ export async function* streamShelleyInSandbox(
     proc.kill();
   }, timeoutMs);
   
-  // Stream stdout line by line
+  // Read both streams concurrently - yield ALL lines
   const stdoutReader = proc.stdout.getReader();
-  const stdoutDecoder = new TextDecoder();
+  const stderrReader = proc.stderr.getReader();
+  const decoder = new TextDecoder();
   let stdoutBuffer = "";
-  let inConversation = false;
+  let stderrBuffer = "";
+  let stdoutDone = false;
+  let stderrDone = false;
   
   try {
-    while (true) {
-      const { done, value } = await stdoutReader.read();
-      if (done) break;
+    while (!stdoutDone || !stderrDone) {
+      // Try to read from both streams
+      const promises = [];
+      if (!stdoutDone) promises.push(stdoutReader.read().then(r => ({ stream: 'stdout', ...r })));
+      if (!stderrDone) promises.push(stderrReader.read().then(r => ({ stream: 'stderr', ...r })));
       
-      stdoutBuffer += stdoutDecoder.decode(value, { stream: true });
-      const lines = stdoutBuffer.split("\n");
-      stdoutBuffer = lines.pop() || "";
+      const result = await Promise.race(promises);
       
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        
-        // Skip structured log lines
-        if (trimmed.match(/^time=.*level=.*msg=/)) continue;
-        
-        // Detect conversation boundaries
-        if (trimmed.match(/^Created conversation:/)) {
-          inConversation = true;
-          continue;
+      if (result.stream === 'stdout') {
+        if (result.done) {
+          stdoutDone = true;
+        } else {
+          stdoutBuffer += decoder.decode(result.value, { stream: true });
+          const lines = stdoutBuffer.split("\n");
+          stdoutBuffer = lines.pop() || "";
+          for (const line of lines) {
+            if (line.trim()) yield { type: "shelley_progress", data: line };
+          }
         }
-        if (trimmed.match(/^(Conversation completed|To continue:)/)) {
-          inConversation = false;
-          continue;
-        }
-        
-        // Stream interesting lines
-        if (inConversation && trimmed.match(/^[👤🤖🔧]/)) {
-          yield { type: "shelley_progress", data: trimmed };
+      } else {
+        if (result.done) {
+          stderrDone = true;
+        } else {
+          stderrBuffer += decoder.decode(result.value, { stream: true });
+          const lines = stderrBuffer.split("\n");
+          stderrBuffer = lines.pop() || "";
+          for (const line of lines) {
+            if (line.trim()) yield { type: "shelley_progress", data: line };
+          }
         }
       }
     }
@@ -102,13 +107,13 @@ export async function* streamShelleyInSandbox(
     };
     
     if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text();
-      throw new Error(`Shelley failed with exit code ${exitCode}: ${stderr}`);
+      throw new Error(`Shelley failed with exit code ${exitCode}`);
     }
     
   } finally {
     clearTimeout(timeoutHandle);
   }
+
 }
 
 /**

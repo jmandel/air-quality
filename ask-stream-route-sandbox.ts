@@ -52,30 +52,96 @@ export async function handleAskStreamSandboxed(req: Request): Promise<Response> 
   const nowMs = Date.now();
   const sixHoursAgo = nowMs - (6 * 60 * 60 * 1000);
   
+// Add this function before the prompt building section
+
+function buildSchemaSection(): string {
+  const { Database } = require("bun:sqlite");
+  const db = new Database("/home/exedev/app/db.sqlite", { readonly: true });
+  
+  try {
+    // Get all sensors
+    const sensors = db.query("SELECT * FROM sensors ORDER BY id").all() as Array<{
+      id: number;
+      name: string;
+      display_name: string | null;
+      unit: string | null;
+    }>;
+    
+    // Get table schemas
+    const readingsSchema = db.query("PRAGMA table_info(readings)").all();
+    const aggSchema = db.query("PRAGMA table_info(readings_aggregated)").all();
+    
+    // Get indexes
+    const indexes = db.query(`
+      SELECT name, tbl_name 
+      FROM sqlite_master 
+      WHERE type='index' AND sql IS NOT NULL
+    `).all() as Array<{ name: string; tbl_name: string }>;
+    
+    // Build schema section
+    let schema = "DATABASE SCHEMA:\n\n";
+    
+    // Readings table
+    schema += "Table: readings (raw sensor data, 7-day retention)\n";
+    schema += "Columns:\n";
+    (readingsSchema as any[]).forEach((col: any) => {
+      const pk = col.pk ? " PRIMARY KEY" : "";
+      const notnull = col.notnull ? " NOT NULL" : "";
+      schema += `  - ${col.name}: ${col.type}${pk}${notnull}\n`;
+    });
+    schema += "Note: ts is milliseconds since epoch (e.g., Date.now())\n\n";
+    
+    // Aggregated table
+    schema += "Table: readings_aggregated (per-minute summaries, permanent retention)\n";
+    schema += "Columns:\n";
+    (aggSchema as any[]).forEach((col: any) => {
+      const pk = col.pk ? " PRIMARY KEY" : "";
+      const notnull = col.notnull ? " NOT NULL" : "";
+      schema += `  - ${col.name}: ${col.type}${pk}${notnull}\n`;
+    });
+    schema += "Note: Use this table for queries > 2 hours for better performance\n\n";
+    
+    // Indexes
+    const readingsIndexes = indexes.filter(i => i.tbl_name === "readings");
+    const aggIndexes = indexes.filter(i => i.tbl_name === "readings_aggregated");
+    
+    schema += "Indexes on readings: ";
+    schema += readingsIndexes.map(i => i.name).join(", ") + "\n";
+    schema += "Indexes on readings_aggregated: ";
+    schema += aggIndexes.map(i => i.name).join(", ") + "\n\n";
+    
+    // Sensors table  
+    schema += "AVAILABLE SENSORS:\n\n";
+    sensors.forEach(s => {
+      const display = s.display_name || s.name;
+      const unit = s.unit || "n/a";
+      schema += `${s.id}. ${s.name} → "${display}" (${unit})\n`;
+    });
+    
+    schema += "\nCOMMON SENSOR THRESHOLDS:\n";
+    schema += "- CO₂ (id=1): good <800ppm, warning 800-1000, critical >1000\n";
+    schema += "- PM2.5 (id=9): good <12, warning 12-35, critical >35 µg/m³\n";
+    schema += "- VOC Index (id=20): good <100, warning 100-250, critical >250\n";
+    schema += "- Temperature (id=16): typical 20-30°C\n";
+    schema += "- Humidity (id=18): comfortable 40-60%\n";
+    
+    return schema;
+  } finally {
+    db.close();
+  }
+}
+
+const schemaSection = buildSchemaSection();
   // IMPORTANT: Update database path to /db/db.sqlite (inside sandbox)
   const prompt = `You are helping analyze air quality data from an Apollo AIR-1 sensor.
 
-USER QUESTION: "${query}"
+USER QUESTION: "${actualQuery || query}"
 
 DATABASE LOCATION: /db/db.sqlite
 NOTE: The database is mounted read-only inside the sandbox at /db/db.sqlite
 
 DATABASE SCHEMA:
-- Table: sensors
-  Columns: id (INTEGER PRIMARY KEY), name (TEXT), display_name (TEXT), unit (TEXT)
-  
-- Table: readings  
-  Columns: id, ts (INTEGER milliseconds since epoch), sensor_id (FOREIGN KEY), value (REAL)
-  Indexes: idx_readings_ts, idx_readings_sensor_id
-  Note: ts is stored in milliseconds (e.g., ${nowMs} = ${now})
-
-AVAILABLE SENSORS (name → display_name, unit):
-- co2_ppm → "CO₂", ppm (good < 800, warning 800-1000, critical > 1000)
-- pm2_5_ug_m3 → "PM 2.5", µg/m³ (good < 12, warning 12-35, critical > 35)
-- sen55_temp_c → "Temperature", °C (typical: 20-30)
-- sen55_humidity_pct → "Humidity", % (comfortable 40-60)
-- sen55_voc_index → "VOC Index", index (good < 100, warning 100-250, critical > 250)
-(+ 18 more sensors available)
+${schemaSection}
 
 CURRENT TIME: ${now} (${nowMs} ms)
 SIX HOURS AGO: ${sixHoursAgo} ms

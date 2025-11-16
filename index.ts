@@ -654,8 +654,8 @@ const server = serve({
     "/api/ask/stream": {
       async GET(req) {
         try {
-          const { handleAskStream } = await import("./ask-stream-route");
-          return await handleAskStream(req);
+          const { handleAskStreamSandboxed } = await import("./ask-stream-route-sandbox");
+          return await handleAskStreamSandboxed(req);
         } catch (error: any) {
           console.error("Error in /api/ask/stream:", error);
           return Response.json({ 

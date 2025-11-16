@@ -41,7 +41,7 @@ export async function* streamShelleyInSandbox(
       stdout: "pipe",
       stderr: "pipe",
       env: {
-        PATH: "/usr/local/bin:/usr/bin:/bin",
+        PATH: "/bun/bin:/usr/local/bin:/usr/bin:/bin",
         HOME: "/tmp"
       }
     }
@@ -135,7 +135,7 @@ export async function runInSandbox(config: SandboxConfig): Promise<SandboxResult
       stdout: "pipe",
       stderr: "pipe",
       env: {
-        PATH: "/usr/local/bin:/usr/bin:/bin",
+        PATH: "/bun/bin:/usr/local/bin:/usr/bin:/bin",
         HOME: "/tmp",
         DATABASE_PATH: "/db/db.sqlite",
       }

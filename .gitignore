@@ -28,3 +28,11 @@ Thumbs.db
 *.db-wal
 *.backup*
 *.bak
+
+# Ask query cache and generated scripts
+asked/
+asked-backup/
+ask-helper-update.txt
+index-addition.txt
+start-server.sh
+*.broken

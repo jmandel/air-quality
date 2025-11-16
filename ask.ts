@@ -11,6 +11,10 @@ const historyListEl = document.getElementById("history-list") as HTMLDivElement;
 const starredSectionEl = document.getElementById("starred-section") as HTMLDivElement;
 const starredChipsEl = document.getElementById("starred-chips") as HTMLDivElement;
 
+// Store current script and result for tab display
+let currentScriptContent: string | null = null;
+let currentResultJson: any | null = null;
+
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
   div.textContent = text;

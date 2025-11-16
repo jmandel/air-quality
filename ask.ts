@@ -52,7 +52,7 @@ function askQuestion(query: string) {
 
   let dashboardResult: DashboardResponse | null = null;
 
-  const eventSource = new EventSource(`/api/ask/stream?question=${encodeURIComponent(query)}`);
+  const eventSource = new EventSource(`/api/ask/stream?q=${encodeURIComponent(query)}`);
 
   // Capture ALL streaming output in a single scrolling view
   eventSource.addEventListener("status", (e: any) => {

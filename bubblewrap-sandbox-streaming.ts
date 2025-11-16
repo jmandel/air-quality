@@ -128,7 +128,10 @@ export async function runInSandbox(config: SandboxConfig): Promise<SandboxResult
   try {
     const bwrapArgs = buildBwrapArgs(workDir, dbPath, allowNetwork);
     
-    const proc = spawn(["bwrap", ...bwrapArgs, "/bun/bin/bun", "/work/analyze.ts"], {
+    // Extract script filename from scriptPath
+    const scriptName = scriptPath.split('/').pop() || 'analyze.ts';
+    
+    const proc = spawn(["bwrap", ...bwrapArgs, "/bun/bin/bun", `/work/${scriptName}`], {
       stdout: "pipe",
       stderr: "pipe",
       env: {

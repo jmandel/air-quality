@@ -143,10 +143,12 @@ async function handleRerunItem(id: string): Promise<Response> {
   try {
     const { runInSandbox } = await import("./bubblewrap-sandbox-streaming");
     
+    // The sandbox mounts ASKED_DIR as /work/, so we pass just the script path
+    // which is already in ASKED_DIR
     const result = await runInSandbox({
-      scriptPath: scriptPath,
+      scriptPath: join(ASKED_DIR, `${id}.ts`),  // Full path on host
       dbPath: "/home/exedev/app/db.sqlite",
-      workDir: ASKED_DIR,
+      workDir: ASKED_DIR,  // This gets mounted as /work/ inside sandbox
       timeoutMs: 30000,
       allowNetwork: false
     });

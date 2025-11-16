@@ -324,7 +324,7 @@ async function loadHistory() {
       btn.addEventListener("click", async () => {
         const id = btn.getAttribute("data-id");
         if (id) {
-          await fetch(`/api/ask/history/${id}/star`, { method: "POST" });
+          await fetch(`/api/ask/star/${id}`, { method: "POST" });
           loadHistory();
         }
       });
@@ -334,7 +334,7 @@ async function loadHistory() {
       btn.addEventListener("click", async () => {
         const id = btn.getAttribute("data-id");
         if (id && confirm("Delete this query from history?")) {
-          await fetch(`/api/ask/history/${id}`, { method: "DELETE" });
+          await fetch(`/api/ask/trash/${id}`, { method: "POST" });
           loadHistory();
         }
       });
@@ -346,7 +346,7 @@ async function loadHistory() {
 
 async function loadHistoryItem(id: string) {
   try {
-    const response = await fetch(`/api/ask/history/${id}`);
+    const response = await fetch(`/api/ask/item/${id}`);
     if (!response.ok) throw new Error("Failed to load history item");
     
     const item = await response.json();

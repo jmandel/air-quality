@@ -354,7 +354,7 @@ async function loadHistoryItem(id: string) {
     queryInput.value = item.question;
     errorEl.classList.add("hidden");
     loadingEl.classList.add("hidden");
-    renderDashboard(item.answer);
+    renderDashboard(item.latestAnswer);
   } catch (err) {
     console.error("Failed to load history item:", err);
     errorEl.textContent = "Failed to load history item";

@@ -50,7 +50,6 @@ export async function handleAskStreamSandboxed(req: Request): Promise<Response> 
   // Build prompt (only if not cached)
   const now = new Date().toISOString();
   const nowMs = Date.now();
-  const sixHoursAgo = nowMs - (6 * 60 * 60 * 1000);
   
 // Add this function before the prompt building section
 
@@ -144,7 +143,6 @@ DATABASE SCHEMA:
 ${schemaSection}
 
 CURRENT TIME: ${now} (${nowMs} ms)
-SIX HOURS AGO: ${sixHoursAgo} ms
 
 YOUR TASK:
 Write a TypeScript script called "analyze.ts" and save it to: /work/analyze.ts

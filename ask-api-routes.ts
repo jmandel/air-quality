@@ -1,7 +1,4 @@
 // API route handlers for ask history management
-
-import type { Server } from "bun";
-import { spawn } from "bun";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
@@ -112,14 +109,6 @@ async function handleUntrashItem(id: string): Promise<Response> {
     return Response.json({ error: "Item not found" }, { status: 404 });
   }
   return Response.json({ success: true });
-}
-
-async function handleGetItem(id: string): Promise<Response> {
-  const metadata = await getHistoryMetadata(id);
-  if (!metadata) {
-    return Response.json({ error: "Item not found" }, { status: 404 });
-  }
-  return Response.json(metadata);
 }
 
 /**

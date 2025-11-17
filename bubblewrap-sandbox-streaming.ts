@@ -29,15 +29,25 @@ export async function* streamShelleyInSandbox(
   workDir: string,
   timeoutMs = 180000
 ): AsyncGenerator<{ type: string; data: any }> {
-  
   // Create Shelley config
   await createShelleyConfig(workDir);
-  
+
   // Add -debug flag and stream BOTH stdout and stderr with NO filtering
   const bwrapArgs = buildShelleyBwrapArgs(workDir);
-  
+
   const proc = spawn(
-    ["bwrap", ...bwrapArgs, "/usr/local/bin/shelley", "-debug", "-config", "/work/shelley-config.json", "prompt", "-timeout", "180s", prompt],
+    [
+      "bwrap",
+      ...bwrapArgs,
+      "/usr/local/bin/shelley",
+      "-debug",
+      "-config",
+      "/work/shelley-config.json",
+      "prompt",
+      "-timeout",
+      "180s",
+      prompt
+    ],
     {
       stdout: "pipe",
       stderr: "pipe",
@@ -131,11 +141,11 @@ export async function runInSandbox(config: SandboxConfig): Promise<SandboxResult
   await mkdir(workDir, { recursive: true });
 
   try {
-    const bwrapArgs = buildBwrapArgs(workDir, dbPath, allowNetwork);
-    
+    const bwrapArgs = buildRunBwrapArgs(workDir, dbPath, allowNetwork);
+
     // Extract script filename from scriptPath
-    const scriptName = scriptPath.split('/').pop() || 'analyze.ts';
-    
+    const scriptName = scriptPath.split("/").pop() || "analyze.ts";
+
     const proc = spawn(["bwrap", ...bwrapArgs, "/bun/bin/bun", `/work/${scriptName}`], {
       stdout: "pipe",
       stderr: "pipe",
@@ -177,28 +187,43 @@ export async function runInSandbox(config: SandboxConfig): Promise<SandboxResult
   }
 }
 
-function buildBwrapArgs(workDir: string, dbPath: string, allowNetwork: boolean): string[] {
-  const bunDir = join(process.env.HOME || "/home/exedev", ".bun");
-  
-  const args = [
-    "--ro-bind", "/usr", "/usr",
-    "--ro-bind", "/lib", "/lib",
-    "--ro-bind", "/lib64", "/lib64",
-    "--ro-bind", "/bin", "/bin",
-    "--ro-bind", "/sbin", "/sbin",
-    "--ro-bind", bunDir, "/bun",
-    "--ro-bind", dbPath, "/db/db.sqlite",
+const SYSTEM_RO_BINDS = [
+  "--ro-bind", "/usr", "/usr",
+  "--ro-bind", "/lib", "/lib",
+  "--ro-bind", "/lib64", "/lib64",
+  "--ro-bind", "/bin", "/bin",
+  "--ro-bind", "/sbin", "/sbin",
+];
+
+const NETWORK_BIND_ARGS = [
+  "--ro-bind", "/etc/resolv.conf", "/etc/resolv.conf",
+  "--ro-bind", "/etc/ssl", "/etc/ssl",
+  "--ro-bind", "/etc/ca-certificates", "/etc/ca-certificates",
+];
+
+function baseBwrapArgs(workDir: string): string[] {
+  return [
+    ...SYSTEM_RO_BINDS,
     "--bind", workDir, "/work",
     "--dev-bind", "/dev", "/dev",
     "--proc", "/proc",
     "--tmpfs", "/tmp",
     "--die-with-parent",
     "--new-session",
-    "--chdir", "/work"
+    "--chdir", "/work",
+  ];
+}
+
+function buildRunBwrapArgs(workDir: string, dbPath: string, allowNetwork: boolean): string[] {
+  const bunDir = join(process.env.HOME || "/home/exedev", ".bun");
+  const args = [
+    ...baseBwrapArgs(workDir),
+    "--ro-bind", bunDir, "/bun",
+    "--ro-bind", dbPath, "/db/db.sqlite",
   ];
 
   if (allowNetwork) {
-    args.push("--share-net");
+    args.push(...NETWORK_BIND_ARGS, "--share-net");
   } else {
     args.push("--unshare-net");
   }
@@ -209,29 +234,14 @@ function buildBwrapArgs(workDir: string, dbPath: string, allowNetwork: boolean):
 function buildShelleyBwrapArgs(workDir: string): string[] {
   const bunDir = join(process.env.HOME || "/home/exedev", ".bun");
   const dbPath = "/home/exedev/app/db.sqlite";
-  
-  const args = [
-    "--ro-bind", "/usr", "/usr",
-    "--ro-bind", "/lib", "/lib",
-    "--ro-bind", "/lib64", "/lib64",
-    "--ro-bind", "/bin", "/bin",
-    "--ro-bind", "/sbin", "/sbin",
-    "--ro-bind", "/etc/resolv.conf", "/etc/resolv.conf",
-    "--ro-bind", "/etc/ssl", "/etc/ssl",
-    "--ro-bind", "/etc/ca-certificates", "/etc/ca-certificates",
-    "--ro-bind", bunDir, "/bun",  // Mount Bun for testing scripts
-    "--ro-bind", dbPath, "/db/db.sqlite",  // Mount database for testing scripts
-    "--bind", workDir, "/work",
-    "--dev-bind", "/dev", "/dev",
-    "--proc", "/proc",
-    "--tmpfs", "/tmp",
-    "--die-with-parent",
-    "--new-session",
-    "--share-net",
-    "--chdir", "/work"
-  ];
 
-  return args;
+  return [
+    ...baseBwrapArgs(workDir),
+    ...NETWORK_BIND_ARGS,
+    "--ro-bind", bunDir, "/bun",
+    "--ro-bind", dbPath, "/db/db.sqlite",
+    "--share-net",
+  ];
 }
 
 export async function createShelleyConfig(workDir: string): Promise<string> {

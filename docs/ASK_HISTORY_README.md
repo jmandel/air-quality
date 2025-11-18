@@ -115,20 +115,6 @@ Move item to trash.
 ### DELETE /api/ask/trash/:id
 Restore item from trash (untrash).
 
-### GET /api/ask/item/:id
-Get full metadata including answer for a specific item.
-
-**Response:**
-```json
-{
-  "id": "...",
-  "timestamp": "...",
-  "question": "...",
-  "answer": { ... },
-  "conversationId": "..."
-}
-```
-
 ## Implementation Details
 
 ### Modules
@@ -220,4 +206,3 @@ curl http://localhost:3000/api/ask/history?limit=50 | jq '.items | length'
 ```
 c5b8a30 Add ask history feature with starred pills and catalog
 ```
-

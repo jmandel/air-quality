@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "bun --watch index.ts",
-    "start": "bun run index.ts"
+    "dev": "bun --watch src/index.ts",
+    "start": "bun run src/index.ts"
   },
   "dependencies": {
     "chart.js": "^4.4.1",

@@ -3,7 +3,8 @@ import { join, basename } from "path";
 import { existsSync } from "fs";
 import type { DashboardResponse } from "./dashboard-types";
 
-export const ASKED_DIR = join(import.meta.dir, "asked");
+// Keep history alongside the repo root, not inside the compiled source tree
+export const ASKED_DIR = join(import.meta.dir, "../asked");
 const STARRED_DIR = join(ASKED_DIR, "starred");
 const TRASHED_DIR = join(ASKED_DIR, "trashed");
 

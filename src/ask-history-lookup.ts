@@ -2,7 +2,7 @@ import { readdir, readFile } from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
 
-const ASKED_DIR = join(import.meta.dir, "asked");
+const ASKED_DIR = join(import.meta.dir, "../asked");
 
 /**
  * Find the most recent script for a given question

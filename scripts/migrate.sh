@@ -4,6 +4,9 @@
 
 set -e
 
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_DIR"
+
 DB_FILE="${1:-db.sqlite}"
 
 if [ ! -f "$DB_FILE" ]; then

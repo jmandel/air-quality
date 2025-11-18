@@ -52,8 +52,8 @@ sudo journalctl -u air1-logger -f
 
 ### Auto-Reload
 
-The service uses `bun run --watch` for automatic reloading when files change:
-- Watches: `index.ts`, `index.html`, `upload.html`, `viewer.ts`, `uploader.ts`
+The service uses `bun run --watch` (via `scripts/dev.sh`) for automatic reloading when files change:
+- Watches the entire `src/` tree (server and frontend assets)
 - No manual restart needed after editing code
 - Graceful restarts with zero downtime
 
@@ -70,7 +70,7 @@ Create a `.env` file or set in systemd service:
 ### Deduplication
 
 Prevents duplicate readings when multiple browser tabs stream the same sensor data:
-- **Time Window**: 10 seconds (configurable via `DEDUPE_WINDOW_MS` in `index.ts`)
+- **Time Window**: 10 seconds (configurable via `DEDUPE_WINDOW_MS` in `src/index.ts`)
 - **Logic**: Readings with same `sensorId`, `value`, and `state` within window are dropped
 - **Performance**: Two-tier system (in-memory cache + indexed database fallback)
 - **API Response**: Returns `inserted` and `duplicates` counts
@@ -214,8 +214,8 @@ The sandboxing adds minimal overhead:
 #### Implementation Details
 
 **Files:**
-- `bubblewrap-sandbox.ts` - Core sandbox module
-  - `runShelleyInSandbox()` - Generate scripts in isolation
+- `src/bubblewrap-sandbox-streaming.ts` - Core sandbox module
+  - `streamShelleyInSandbox()` - Generate scripts in isolation with streaming logs
   - `runInSandbox()` - Execute scripts in isolation
   - `createShelleyConfig()` - Fresh token per request
 - `ask-stream-sandbox.ts` - Sandboxed streaming execution
@@ -382,7 +382,7 @@ Try these queries:
 
 ### Configuration
 
-The ask feature is configured in the main server (`index.ts`):
+The ask feature is configured in the main server (`src/index.ts`):
 
 ```typescript
 "/api/ask/stream": {
@@ -507,14 +507,22 @@ The systemd service includes security features:
 
 ```
 .
-├── index.ts            # Bun + SQLite backend and SSE API
-├── index.html          # Viewer page (live dashboard)
-├── upload.html         # Uploader page (device bridge)
-├── viewer.ts           # Client script for the viewer
-├── uploader.ts         # Client script for the uploader
-├── seed-data.ts        # Sensor metadata and ids
-├── db.sqlite           # SQLite database (auto-created)
-└── package.json        # Dependencies
+├── src/                      # All TypeScript + frontend assets
+│   ├── index.ts              # Bun + SQLite backend and SSE API
+│   ├── index.html            # Viewer page (live dashboard)
+│   ├── upload.html           # Uploader page (device bridge)
+│   ├── test-stream.html      # SSE test page
+│   ├── ask.html / ask.ts     # Natural language UI
+│   ├── viewer.ts / uploader.ts
+│   ├── ask-*.ts              # Ask backend helpers
+│   ├── bubblewrap-sandbox-streaming.ts
+│   └── dashboard-types.ts
+├── scripts/                  # Operational helpers (dev/watch/migrate/logs)
+├── migrations/               # SQL migrations
+├── asked/                    # Saved ask history (runtime data)
+├── db.sqlite                 # SQLite database (auto-created)
+├── docs/                     # Additional documentation
+└── package.json
 ```
 
 ## How It Works

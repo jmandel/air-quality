@@ -20,6 +20,8 @@ This dual-path approach was:
 - ❌ Redundant - duplicated logic
 - ❌ Unclear - hard to tell what's sandboxed
 
+> Note: The legacy `/api/ask/item/:id` endpoint has since been removed; use the streaming endpoint with `?id=` instead.
+
 ## Solution
 
 **Consolidated to single streaming endpoint with optional history ID:**

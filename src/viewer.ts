@@ -772,9 +772,56 @@ async function syncServerTime() {
 }
 
 
+// Saved visualizations section
+const savedVizSection = document.getElementById("saved-viz-section") as HTMLElement | null;
+const savedVizList = document.getElementById("saved-viz-list") as HTMLElement | null;
+
+async function loadSavedVisualizations() {
+  if (!savedVizSection || !savedVizList) return;
+
+  try {
+    const response = await fetch(`${API_BASE}/ask/history?limit=20`);
+    if (!response.ok) return;
+
+    const { items } = await response.json();
+    if (!items || items.length === 0) {
+      savedVizSection.style.display = "none";
+      return;
+    }
+
+    savedVizSection.style.display = "";
+    
+    savedVizList.innerHTML = items
+      .map((item: any) => {
+        const timeStr = formatRelative(new Date(item.lastRunAt || item.createdAt).getTime());
+        const starred = item.starred ? `<span class="saved-viz-starred">⭐</span>` : "";
+        const runInfo = item.runCount > 1 ? ` (${item.runCount}×)` : "";
+        return `
+          <a class="saved-viz-item" href="/ask.html?q=${encodeURIComponent(item.question)}">
+            <span class="saved-viz-question">${escapeHtml(item.question)}${runInfo}</span>
+            <span class="saved-viz-meta">
+              <span class="saved-viz-time">${timeStr}</span>
+              ${starred}
+            </span>
+          </a>
+        `;
+      })
+      .join("");
+  } catch (err) {
+    console.warn("Failed to load saved visualizations:", err);
+  }
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 async function init() {
   await syncServerTime();
   await loadHistory();
+  await loadSavedVisualizations();
   openStream();
 }
 

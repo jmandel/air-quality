@@ -6,7 +6,7 @@ substitutions:
   device_description: "apollo-air-1 made by Apollo Automation - version 25.8.6.1"
 
   # Your cloud ingest URL – change this to your real endpoint
-  cloud_endpoint: "https://air443.exe.dev/api/submit"
+  cloud_endpoint: "https://air443.exe.xyz/api/submit"
 
 packages:
   # Use Apollo's AIR-1.yaml (which includes Core.yaml with our sensor ID additions)

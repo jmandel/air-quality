@@ -529,56 +529,56 @@ const server = serve({
           // Store original device timestamp in logs for reference
           const deviceTimestamp = data.timestamp;
 
-          // Map ESPHome JSON fields to database sensor names
-          // Format: 'db_sensor_name': { sensorName: 'db_sensor_name', value: <json_path> }
+          // Map ESPHome JSON fields to database sensor names (1:1 mapping)
+          // DB names match device JSON field names exactly
           //
           // Device JSON structure:
-          //   measurements.co2_ppm, .pressure_hpa, .dps_temp_c, .sen55_temp_c, .sen55_humidity_pct
-          //   measurements.voc_index, .nox_index
-          //   measurements.pm_ug_m3.{pm1, pm2_5, pm4, pm10, pm0_3_to_1, pm1_to_2_5, pm2_5_to_4, pm4_to_10}
-          //   measurements.gases_ppm.{no2, co, h2, ethanol, ch4, nh3}
-          //   diagnostics.{esp_temp_c, wifi_rssi_dbm, uptime_s}
+          //   measurements: co2_ppm, pressure_hpa, dps_temp_c, sen55_temp_c, sen55_humidity_pct,
+          //                 voc_index, nox_index
+          //   measurements.pm_ug_m3: pm1, pm2_5, pm4, pm10, pm0_3_to_1, pm1_to_2_5, pm2_5_to_4, pm4_to_10
+          //   measurements.gases_ppm: no2, co, h2, ethanol, ch4, nh3
+          //   diagnostics: esp_temp_c, wifi_rssi_dbm, uptime_s
           //
-          const sensorMappings: Record<string, { sensorName: string, value: any }> = {
+          const sensorMappings: Record<string, any> = {
             // === CO2 (SCD40 sensor) ===
-            'co2_ppm': { sensorName: 'co2_ppm', value: data.measurements.co2_ppm },
+            'co2_ppm': data.measurements.co2_ppm,
 
             // === Temperature & Humidity (SEN55 sensor) ===
-            'sen55_temp_c': { sensorName: 'sen55_temp_c', value: data.measurements.sen55_temp_c },
-            'sen55_humidity_pct': { sensorName: 'sen55_humidity_pct', value: data.measurements.sen55_humidity_pct },
+            'sen55_temp_c': data.measurements.sen55_temp_c,
+            'sen55_humidity_pct': data.measurements.sen55_humidity_pct,
 
             // === VOC & NOx Indices (SEN55 sensor) ===
-            'sen55_voc_index': { sensorName: 'sen55_voc_index', value: data.measurements.voc_index },
-            'sen55_nox_index': { sensorName: 'sen55_nox_index', value: data.measurements.nox_index },
+            'voc_index': data.measurements.voc_index,
+            'nox_index': data.measurements.nox_index,
 
             // === Pressure & Temperature (DPS310 barometric sensor) ===
-            'dps310_pressure_hpa': { sensorName: 'dps310_pressure_hpa', value: data.measurements.pressure_hpa },
-            'dps310_temp_c': { sensorName: 'dps310_temp_c', value: data.measurements.dps_temp_c },
+            'pressure_hpa': data.measurements.pressure_hpa,
+            'dps_temp_c': data.measurements.dps_temp_c,
 
             // === Particulate Matter Mass (SEN55 sensor, µg/m³) ===
-            'pm1_ug_m3': { sensorName: 'pm1_ug_m3', value: data.measurements.pm_ug_m3?.pm1 },
-            'pm2_5_ug_m3': { sensorName: 'pm2_5_ug_m3', value: data.measurements.pm_ug_m3?.pm2_5 },
-            'pm4_ug_m3': { sensorName: 'pm4_ug_m3', value: data.measurements.pm_ug_m3?.pm4 },
-            'pm10_ug_m3': { sensorName: 'pm10_ug_m3', value: data.measurements.pm_ug_m3?.pm10 },
+            'pm1': data.measurements.pm_ug_m3?.pm1,
+            'pm2_5': data.measurements.pm_ug_m3?.pm2_5,
+            'pm4': data.measurements.pm_ug_m3?.pm4,
+            'pm10': data.measurements.pm_ug_m3?.pm10,
 
-            // === Particulate Matter Counts (SEN55 sensor, #/cm³) ===
-            'pm0_3_to_1_num': { sensorName: 'pm0_3_to_1_num', value: data.measurements.pm_ug_m3?.pm0_3_to_1 },
-            'pm1_to_2_5_num': { sensorName: 'pm1_to_2_5_num', value: data.measurements.pm_ug_m3?.pm1_to_2_5 },
-            'pm2_5_to_4_num': { sensorName: 'pm2_5_to_4_num', value: data.measurements.pm_ug_m3?.pm2_5_to_4 },
-            'pm4_to_10_num': { sensorName: 'pm4_to_10_num', value: data.measurements.pm_ug_m3?.pm4_to_10 },
+            // === Particulate Matter Bins (SEN55 sensor, µg/m³) ===
+            'pm0_3_to_1': data.measurements.pm_ug_m3?.pm0_3_to_1,
+            'pm1_to_2_5': data.measurements.pm_ug_m3?.pm1_to_2_5,
+            'pm2_5_to_4': data.measurements.pm_ug_m3?.pm2_5_to_4,
+            'pm4_to_10': data.measurements.pm_ug_m3?.pm4_to_10,
 
             // === Gas Sensors (MICS-4514 sensor, ppm) ===
-            'no2_ppm': { sensorName: 'no2_ppm', value: data.measurements.gases_ppm?.no2 },
-            'co_ppm': { sensorName: 'co_ppm', value: data.measurements.gases_ppm?.co },
-            'h2_ppm': { sensorName: 'h2_ppm', value: data.measurements.gases_ppm?.h2 },
-            'ethanol_ppm': { sensorName: 'ethanol_ppm', value: data.measurements.gases_ppm?.ethanol },
-            'ch4_ppm': { sensorName: 'ch4_ppm', value: data.measurements.gases_ppm?.ch4 },
-            'nh3_ppm': { sensorName: 'nh3_ppm', value: data.measurements.gases_ppm?.nh3 },
+            'no2': data.measurements.gases_ppm?.no2,
+            'co': data.measurements.gases_ppm?.co,
+            'h2': data.measurements.gases_ppm?.h2,
+            'ethanol': data.measurements.gases_ppm?.ethanol,
+            'ch4': data.measurements.gases_ppm?.ch4,
+            'nh3': data.measurements.gases_ppm?.nh3,
 
             // === System Diagnostics (ESP32) ===
-            'esp_temp_c': { sensorName: 'esp_temp_c', value: data.diagnostics?.esp_temp_c },
-            'wifi_rssi_dbm': { sensorName: 'wifi_rssi_dbm', value: data.diagnostics?.wifi_rssi_dbm },
-            'uptime_s': { sensorName: 'uptime_s', value: data.diagnostics?.uptime_s },
+            'esp_temp_c': data.diagnostics?.esp_temp_c,
+            'wifi_rssi_dbm': data.diagnostics?.wifi_rssi_dbm,
+            'uptime_s': data.diagnostics?.uptime_s,
           };
           let inserted = 0;
           let duplicates = 0;
@@ -586,9 +586,7 @@ const server = serve({
           const broadcastReadings: any[] = [];
 
           const transaction = db.transaction(() => {
-            for (const [key, mapping] of Object.entries(sensorMappings)) {
-              const { sensorName, value } = mapping;
-              
+            for (const [sensorName, value] of Object.entries(sensorMappings)) {
               // Skip if value is null, undefined, or NaN
               if (value == null || (typeof value === 'number' && isNaN(value))) {
                 continue;

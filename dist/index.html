@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AIR-1 Viewer</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f172a;
+      --surface: #15213a;
+      --surface-alt: #1c2a47;
+      --border: #223352;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --danger: #f97316;
+      --success: #22c55e;
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    .top-bar {
+      padding: 24px clamp(16px, 5vw, 48px);
+      background: linear-gradient(135deg, var(--surface), var(--surface-alt));
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .title h1 {
+      margin: 0;
+      font-size: clamp(24px, 4vw, 32px);
+    }
+
+    .title .subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status {
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 13px;
+      border: 1px solid transparent;
+      background: rgba(148, 163, 184, 0.15);
+      color: var(--muted);
+    }
+
+    .status-connected {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--success);
+      border-color: rgba(34, 197, 94, 0.4);
+    }
+
+    .status-connecting {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+
+    .status-error {
+      background: rgba(249, 115, 22, 0.15);
+      color: var(--danger);
+      border-color: rgba(249, 115, 22, 0.4);
+    }
+
+    .layout {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: clamp(16px, 4vw, 32px);
+      padding: 0 clamp(16px, 5vw, 48px) 32px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-height: 320px;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .panel-header h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .panel-header span {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      text-align: left;
+    }
+
+    thead {
+      background: rgba(148, 163, 184, 0.1);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    tbody tr:nth-child(even) {
+      background: rgba(148, 163, 184, 0.04);
+    }
+
+    tbody tr:not(:last-child) td {
+      border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    }
+
+    .value {
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+
+    .state-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: rgba(148, 163, 184, 0.12);
+      color: var(--muted);
+    }
+
+    .time-ago {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .event-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      font-family: ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 13px;
+    }
+
+    .event {
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(148, 163, 184, 0.07);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .event-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 4px;
+    }
+
+    .event-sensor {
+      font-weight: 600;
+    }
+
+    .event-time {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .placeholder {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 20px;
+      position: relative;
+    }
+
+    .chart-empty {
+      grid-column: 1 / -1;
+      border: 1px dashed rgba(148, 163, 184, 0.25);
+      border-radius: 16px;
+      padding: 32px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .chart-empty[data-visible="false"] {
+      display: none;
+    }
+
+    .chart-card {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 320px;
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .chart-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .chart-meta {
+      font-size: 13px;
+      color: var(--muted);
+      flex: 1;
+    }
+
+    .chart-canvas {
+      position: relative;
+      flex: 1;
+    }
+
+    .chart-canvas canvas {
+      width: 100%;
+      height: 260px;
+    }
+
+    .chart-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .badge {
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      background: rgba(148, 163, 184, 0.08);
+    }
+
+    .sensor-button {
+      background: rgba(56, 189, 248, 0.18);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, border 0.2s;
+    }
+
+    .sensor-button:hover {
+      background: rgba(56, 189, 248, 0.28);
+    }
+
+    .chart-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .chart-action {
+      background: rgba(148, 163, 184, 0.12);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s, border 0.2s, color 0.2s;
+    }
+
+    .chart-action:hover {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: var(--accent);
+    }
+
+    .sensor-picker {
+      position: fixed;
+      top: 96px;
+      right: clamp(16px, 5vw, 48px);
+      width: min(420px, calc(100% - 32px));
+      max-height: calc(100vh - 140px);
+      overflow: auto;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 16px;
+      padding: 20px;
+      display: none;
+      gap: 16px;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.4);
+      z-index: 20;
+    }
+
+    .sensor-picker[data-open="true"] {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sensor-picker-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .sensor-picker-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .sensor-picker-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+
+    .sensor-picker-close:hover {
+      background: rgba(148, 163, 184, 0.12);
+      color: var(--accent);
+    }
+
+    .sensor-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .sensor-group + .sensor-group {
+      margin-top: 12px;
+      border-top: 1px solid rgba(148, 163, 184, 0.12);
+      padding-top: 12px;
+    }
+
+    .group-title {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .sensor-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(148, 163, 184, 0.08);
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s, border 0.2s, color 0.2s;
+      margin: 4px 6px 0 0;
+    }
+
+    .sensor-chip[data-selected="true"] {
+      border-color: rgba(56, 189, 248, 0.5);
+      background: rgba(56, 189, 248, 0.2);
+      color: var(--accent);
+    }
+
+    .sensor-chip:hover {
+      border-color: rgba(56, 189, 248, 0.35);
+      color: var(--accent);
+    }
+
+    .footer {
+      padding: 0 clamp(16px, 5vw, 48px) 32px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 600px) {
+      .panel {
+        padding: 18px;
+      }
+    }
+  </style>
+<script type="module" crossorigin src="./index-1e7t7e5d.js"></script></head>
+<body>
+  <header class="top-bar">
+    <div class="title">
+      <h1>AIR-1 Viewer</h1>
+      <p class="subtitle">Live readings from the local runtime</p>
+    </div>
+    <div class="toolbar">
+      <button id="sensor-picker-toggle" class="sensor-button" type="button">Sensors</button>
+      <div id="connection-status" class="status status-connecting">Connecting...</div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Latest Readings</h2>
+        <span id="last-update">No data yet</span>
+      </div>
+      <table class="readings-table">
+        <thead>
+          <tr>
+            <th>Sensor</th>
+            <th>Value</th>
+            <th>State</th>
+            <th>Updated</th>
+          </tr>
+        </thead>
+        <tbody id="latest-readings"></tbody>
+      </table>
+    </section>
+
+    <section class="panel" aria-label="Recent activity">
+      <div class="panel-header">
+        <h2>Recent Activity</h2>
+      </div>
+      <ul id="recent-events" class="event-list">
+        <li class="placeholder">Waiting for data...</li>
+      </ul>
+    </section>
+
+    <section class="panel" aria-label="Sensor charts">
+      <div class="panel-header">
+        <h2>Health Zones by Sensor</h2>
+        <span class="chart-meta" id="chart-window-label">Window: 6h</span>
+      </div>
+      <div id="chart-grid" class="chart-grid">
+        <div id="chart-empty" class="chart-empty" data-visible="true">
+          Select one or more sensors to visualize their health zones.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <aside id="sensor-picker" class="sensor-picker" aria-hidden="true">
+    <div class="sensor-picker-header">
+      <h3 class="sensor-picker-title">Select sensors</h3>
+      <button id="sensor-picker-close" class="sensor-picker-close" type="button" aria-label="Close sensor picker">×</button>
+    </div>
+    <div id="sensor-picker-groups" class="sensor-picker-groups"></div>
+  </aside>
+
+  <footer class="footer">
+    <span>
+      Need to push readings to the server? Open
+      <a href="/upload.html">upload.html</a>
+      in another tab.
+    </span>
+  </footer>
+
+  
+</body>
+</html>

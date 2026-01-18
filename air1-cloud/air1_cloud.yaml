@@ -63,7 +63,7 @@ interval:
             }
 
             // Core measurements
-            auto meas = root.createNestedObject("measurements");
+            auto meas = root["measurements"].to<JsonObject>();
 
             // SCD40 CO2
             meas["co2_ppm"] = id(co2).state;
@@ -81,7 +81,7 @@ interval:
             meas["nox_index"] = id(sen55_nox).state;
 
             // PM mass concentrations (µg/m³)
-            auto pm = meas.createNestedObject("pm_ug_m3");
+            auto pm = meas["pm_ug_m3"].to<JsonObject>();
             pm["pm1"]        = id(pm_1_0).state;
             pm["pm2_5"]      = id(pm_2_5).state;
             pm["pm4"]        = id(pm_4_0).state;
@@ -92,7 +92,7 @@ interval:
             pm["pm4_to_10"]  = id(pm4_to_10).state;
 
             // Gas sensors (MICS-4514) – ppm values
-            auto gases = meas.createNestedObject("gases_ppm");
+            auto gases = meas["gases_ppm"].to<JsonObject>();
             gases["no2"]     = id(gas_no2).state;
             gases["co"]      = id(gas_co).state;
             gases["h2"]      = id(gas_h2).state;
@@ -101,7 +101,7 @@ interval:
             gases["nh3"]     = id(gas_nh3).state;
 
             // Diagnostics & config
-            auto diag = root.createNestedObject("diagnostics");
+            auto diag = root["diagnostics"].to<JsonObject>();
             diag["esp_temp_c"]         = id(sys_esp_temperature).state;
             diag["wifi_rssi_dbm"]      = id(wifi_signal_db).state;
             diag["uptime_s"]           = id(sys_uptime).state;

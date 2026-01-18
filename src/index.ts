@@ -6,6 +6,7 @@ import askPage from "./ask.html";
 import testStreamPage from "./test-stream.html";
 import { SENSOR_SEED_DATA } from "./seed-data";
 import { askShelley } from "./ask-helper";
+import { getSensorMetadata, getCurrentZone } from "./sensor-utils";
 
 const PORT = parseInt(process.env.PORT || "443", 10);
 const DEFAULT_AIR_SENSOR_URL = process.env.AIR_SENSOR_URL || "http://10.0.0.37/";
@@ -316,10 +317,20 @@ function broadcastToClients(readings: any[]) {
     try {
       // Send each reading as a separate "state" event (matching device format)
       for (const reading of readings) {
+        // Calculate state from zone if value is present
+        let state = reading.state || "";
+        if (reading.value !== null && reading.value !== undefined && reading.sensorId) {
+          const metadata = getSensorMetadata(reading.sensorId);
+          const zone = getCurrentZone(reading.value, metadata);
+          if (zone) {
+            state = zone.label;
+          }
+        }
+
         const eventData = {
           id: reading.sensorId,
           value: reading.value,
-          state: reading.state || "",
+          state,
           ts: reading.ts ?? Date.now(),
         };
 
@@ -518,38 +529,54 @@ const server = serve({
           // Store original device timestamp in logs for reference
           const deviceTimestamp = data.timestamp;
 
-          // Map ESPHome fields to sensor names in our database
-          // Direct 1:1 mapping from JSON fields to database sensor names
+          // Map ESPHome JSON fields to database sensor names
+          // Format: 'db_sensor_name': { sensorName: 'db_sensor_name', value: <json_path> }
+          //
+          // Device JSON structure:
+          //   measurements.co2_ppm, .pressure_hpa, .dps_temp_c, .sen55_temp_c, .sen55_humidity_pct
+          //   measurements.voc_index, .nox_index
+          //   measurements.pm_ug_m3.{pm1, pm2_5, pm4, pm10, pm0_3_to_1, pm1_to_2_5, pm2_5_to_4, pm4_to_10}
+          //   measurements.gases_ppm.{no2, co, h2, ethanol, ch4, nh3}
+          //   diagnostics.{esp_temp_c, wifi_rssi_dbm, uptime_s}
+          //
           const sensorMappings: Record<string, { sensorName: string, value: any }> = {
-            // Core measurements
+            // === CO2 (SCD40 sensor) ===
             'co2_ppm': { sensorName: 'co2_ppm', value: data.measurements.co2_ppm },
-            'dps310_pressure_hpa': { sensorName: 'dps310_pressure_hpa', value: data.measurements.pressure_hpa },
-            'sen55_temp_c': { sensorName: 'sen55_temp_c', value: data.measurements.sen55_temp_c || data.measurements.dps_temp_c },
+
+            // === Temperature & Humidity (SEN55 sensor) ===
+            'sen55_temp_c': { sensorName: 'sen55_temp_c', value: data.measurements.sen55_temp_c },
             'sen55_humidity_pct': { sensorName: 'sen55_humidity_pct', value: data.measurements.sen55_humidity_pct },
+
+            // === VOC & NOx Indices (SEN55 sensor) ===
             'sen55_voc_index': { sensorName: 'sen55_voc_index', value: data.measurements.voc_index },
             'sen55_nox_index': { sensorName: 'sen55_nox_index', value: data.measurements.nox_index },
-            
-            // Gas measurements (from gases_ppm object)
+
+            // === Pressure & Temperature (DPS310 barometric sensor) ===
+            'dps310_pressure_hpa': { sensorName: 'dps310_pressure_hpa', value: data.measurements.pressure_hpa },
+            'dps310_temp_c': { sensorName: 'dps310_temp_c', value: data.measurements.dps_temp_c },
+
+            // === Particulate Matter Mass (SEN55 sensor, µg/m³) ===
+            'pm1_ug_m3': { sensorName: 'pm1_ug_m3', value: data.measurements.pm_ug_m3?.pm1 },
+            'pm2_5_ug_m3': { sensorName: 'pm2_5_ug_m3', value: data.measurements.pm_ug_m3?.pm2_5 },
+            'pm4_ug_m3': { sensorName: 'pm4_ug_m3', value: data.measurements.pm_ug_m3?.pm4 },
+            'pm10_ug_m3': { sensorName: 'pm10_ug_m3', value: data.measurements.pm_ug_m3?.pm10 },
+
+            // === Particulate Matter Counts (SEN55 sensor, #/cm³) ===
+            'pm0_3_to_1_num': { sensorName: 'pm0_3_to_1_num', value: data.measurements.pm_ug_m3?.pm0_3_to_1 },
+            'pm1_to_2_5_num': { sensorName: 'pm1_to_2_5_num', value: data.measurements.pm_ug_m3?.pm1_to_2_5 },
+            'pm2_5_to_4_num': { sensorName: 'pm2_5_to_4_num', value: data.measurements.pm_ug_m3?.pm2_5_to_4 },
+            'pm4_to_10_num': { sensorName: 'pm4_to_10_num', value: data.measurements.pm_ug_m3?.pm4_to_10 },
+
+            // === Gas Sensors (MICS-4514 sensor, ppm) ===
             'no2_ppm': { sensorName: 'no2_ppm', value: data.measurements.gases_ppm?.no2 },
             'co_ppm': { sensorName: 'co_ppm', value: data.measurements.gases_ppm?.co },
             'h2_ppm': { sensorName: 'h2_ppm', value: data.measurements.gases_ppm?.h2 },
             'ethanol_ppm': { sensorName: 'ethanol_ppm', value: data.measurements.gases_ppm?.ethanol },
             'ch4_ppm': { sensorName: 'ch4_ppm', value: data.measurements.gases_ppm?.ch4 },
             'nh3_ppm': { sensorName: 'nh3_ppm', value: data.measurements.gases_ppm?.nh3 },
-            
-            // PM mass measurements (from pm_ug_m3 object)
-            'pm1_ug_m3': { sensorName: 'pm1_ug_m3', value: data.measurements.pm_ug_m3?.pm1 },
-            'pm2_5_ug_m3': { sensorName: 'pm2_5_ug_m3', value: data.measurements.pm_ug_m3?.pm2_5 },
-            'pm4_ug_m3': { sensorName: 'pm4_ug_m3', value: data.measurements.pm_ug_m3?.pm4 },
-            'pm10_ug_m3': { sensorName: 'pm10_ug_m3', value: data.measurements.pm_ug_m3?.pm10 },
-            
-            // PM count measurements (from pm_ug_m3 object)
-            'pm0_3_to_1_num': { sensorName: 'pm0_3_to_1_num', value: data.measurements.pm_ug_m3?.pm0_3_to_1 },
-            'pm1_to_2_5_num': { sensorName: 'pm1_to_2_5_num', value: data.measurements.pm_ug_m3?.pm1_to_2_5 },
-            'pm2_5_to_4_num': { sensorName: 'pm2_5_to_4_num', value: data.measurements.pm_ug_m3?.pm2_5_to_4 },
-            'pm4_to_10_num': { sensorName: 'pm4_to_10_num', value: data.measurements.pm_ug_m3?.pm4_to_10 },
-            
-            // Diagnostics
+
+            // === System Diagnostics (ESP32) ===
+            'esp_temp_c': { sensorName: 'esp_temp_c', value: data.diagnostics?.esp_temp_c },
             'wifi_rssi_dbm': { sensorName: 'wifi_rssi_dbm', value: data.diagnostics?.wifi_rssi_dbm },
             'uptime_s': { sensorName: 'uptime_s', value: data.diagnostics?.uptime_s },
           };

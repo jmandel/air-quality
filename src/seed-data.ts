@@ -24,12 +24,13 @@ export const SENSOR_SEED_DATA = [
   { id: 15, name: 'pm4_to_10_num', display_name: 'PM 4.0-10μm', unit: '#/cm³' },
 
   // Environmental sensors
-  { id: 16, name: 'sen55_temp_c', display_name: 'Temperature', unit: '°C' },
+  { id: 16, name: 'sen55_temp_c', display_name: 'Temperature (SEN55)', unit: '°C' },
   { id: 17, name: 'esp_temp_c', display_name: 'ESP Temperature', unit: '°C' },
   { id: 18, name: 'sen55_humidity_pct', display_name: 'Humidity', unit: '%' },
   { id: 19, name: 'dps310_pressure_hpa', display_name: 'Pressure', unit: 'hPa' },
-  { id: 20, name: 'sen55_voc_index', display_name: 'VOC Index', unit: 'index' },
-  { id: 21, name: 'sen55_nox_index', display_name: 'NOx Index', unit: 'index' },
+  { id: 20, name: 'sen55_voc_index', display_name: 'VOC Index', unit: '' },
+  { id: 21, name: 'sen55_nox_index', display_name: 'NOx Index', unit: '' },
+  { id: 30, name: 'dps310_temp_c', display_name: 'Temperature (DPS310)', unit: '°C' },
 
   // System sensors
   { id: 22, name: 'wifi_rssi_dbm', display_name: 'Signal Strength', unit: 'dBm' },

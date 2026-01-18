@@ -163,7 +163,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
   'sen55_voc_index': {
     displayName: 'VOC Index',
     defaultVisible: true,
-    unit: 'index',
+    unit: '',
     decimalPlaces: 0,
     yAxis: { min: 0, max: 500 },
     defaultTimeWindow: 24,
@@ -187,7 +187,7 @@ export const SENSOR_REGISTRY: Record<string, SensorMetadata> = {
   'sen55_nox_index': {
     displayName: 'NOx Index',
     defaultVisible: true,
-    unit: 'index',
+    unit: '',
     decimalPlaces: 0,
     yAxis: { min: 0, max: 500 },
     defaultTimeWindow: 6,

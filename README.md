@@ -65,6 +65,68 @@ Create a `.env` file or set in systemd service:
 - `AIR_SENSOR_URL` - Default AIR-1 sensor URL (default: http://10.0.0.37/)
 - `NODE_ENV` - Environment (development/production)
 
+## Supported Sensors
+
+The Apollo AIR-1 includes multiple sensors that are all logged and displayed in the dashboard. **Sensor names in the database match the device JSON field names exactly** for transparent, predictable mapping.
+
+### Air Quality Sensors
+
+| Sensor Name | Display Name | Unit | Hardware | Health Priority |
+|-------------|--------------|------|----------|-----------------|
+| `co2_ppm` | CO₂ | ppm | SCD40 | Primary |
+| `pm2_5` | PM2.5 | µg/m³ | SEN55 | Primary |
+| `co` | CO | ppm | MICS-4514 | Primary |
+| `voc_index` | VOC Index | - | SEN55 | Secondary |
+| `nox_index` | NOx Index | - | SEN55 | Secondary |
+| `no2` | NO₂ | ppm | MICS-4514 | Secondary |
+| `nh3` | Ammonia | ppm | MICS-4514 | Secondary |
+
+### Environmental Sensors
+
+| Sensor Name | Display Name | Unit | Hardware | Health Priority |
+|-------------|--------------|------|----------|-----------------|
+| `sen55_temp_c` | Temperature | °C | SEN55 | Secondary |
+| `sen55_humidity_pct` | Humidity | % | SEN55 | Secondary |
+| `pressure_hpa` | Pressure | hPa | DPS310 | Support |
+| `dps_temp_c` | Temperature (DPS310) | °C | DPS310 | Support |
+
+### Particulate Matter Detail
+
+| Sensor Name | Display Name | Unit | Description |
+|-------------|--------------|------|-------------|
+| `pm1` | PM1.0 | µg/m³ | Particles ≤1.0μm |
+| `pm2_5` | PM2.5 | µg/m³ | Particles ≤2.5μm |
+| `pm4` | PM4.0 | µg/m³ | Particles ≤4.0μm |
+| `pm10` | PM10 | µg/m³ | Particles ≤10μm |
+| `pm0_3_to_1` | PM 0.3-1.0μm | µg/m³ | Size bin |
+| `pm1_to_2_5` | PM 1.0-2.5μm | µg/m³ | Size bin |
+| `pm2_5_to_4` | PM 2.5-4.0μm | µg/m³ | Size bin |
+| `pm4_to_10` | PM 4.0-10μm | µg/m³ | Size bin |
+
+### Gas Detection (Safety)
+
+| Sensor Name | Display Name | Unit | Use Case |
+|-------------|--------------|------|----------|
+| `h2` | Hydrogen | ppm | Leak detection |
+| `ch4` | Methane | ppm | Leak detection |
+| `ethanol` | Ethanol | ppm | Occupancy indicator |
+
+### System Diagnostics
+
+| Sensor Name | Display Name | Unit | Description |
+|-------------|--------------|------|-------------|
+| `esp_temp_c` | ESP Temperature | °C | Device health |
+| `wifi_rssi_dbm` | WiFi Signal | dBm | Connectivity |
+| `uptime_s` | Uptime | seconds | Stability |
+
+### Hardware Summary
+
+- **SCD40**: CO₂ sensor (photoacoustic NDIR)
+- **SEN55**: PM1/2.5/4/10, VOC index, NOx index, temperature, humidity
+- **DPS310**: Barometric pressure and temperature
+- **MICS-4514**: Multi-gas sensor (NO₂, CO, H₂, ethanol, CH₄, NH₃)
+- **ESP32**: WiFi, internal temperature, uptime
+
 ## Key Features
 
 ### Deduplication
@@ -514,9 +576,16 @@ The systemd service includes security features:
 │   ├── test-stream.html      # SSE test page
 │   ├── ask.html / ask.ts     # Natural language UI
 │   ├── viewer.ts / uploader.ts
+│   ├── sensor-registry.ts    # Sensor metadata, zones, thresholds
+│   ├── seed-data.ts          # Database sensor definitions
 │   ├── ask-*.ts              # Ask backend helpers
 │   ├── bubblewrap-sandbox-streaming.ts
 │   └── dashboard-types.ts
+├── air1-cloud/               # ESPHome firmware for Apollo AIR-1
+│   ├── air1_cloud.yaml       # Device config (HTTP posting)
+│   ├── secrets.yaml          # WiFi credentials (gitignored)
+│   ├── secrets.yaml.example  # Template for secrets
+│   └── vendor-apollo/        # Apollo repo (git subtree)
 ├── scripts/                  # Operational helpers (dev/watch/migrate/logs)
 ├── migrations/               # SQL migrations
 ├── asked/                    # Saved ask history (runtime data)
@@ -524,6 +593,8 @@ The systemd service includes security features:
 ├── docs/                     # Additional documentation
 └── package.json
 ```
+
+See [air1-cloud/README.md](air1-cloud/README.md) for device firmware setup.
 
 ## How It Works
 

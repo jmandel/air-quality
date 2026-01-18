@@ -5,7 +5,7 @@ import uploaderPage from "./upload.html";
 import askPage from "./ask.html";
 import testStreamPage from "./test-stream.html";
 import { SENSOR_SEED_DATA } from "./seed-data";
-import { askShelley } from "./ask-helper";
+// Old ask-helper removed - using ask-stream-route-vega.ts now
 import { getSensorMetadata, getCurrentZone } from "./sensor-utils";
 
 const PORT = parseInt(process.env.PORT || "443", 10);
@@ -690,42 +690,7 @@ const server = serve({
         }
       }
     },
-    "/api/ask": {
-      async GET(req) {
-        const url = new URL(req.url);
-        const query = url.searchParams.get("q") || url.searchParams.get("query");
-        
-        if (!query) {
-          return Response.json({ 
-            error: "Missing query parameter. Use ?q=your_question" 
-          }, { status: 400 });
-        }
-        
-        try {
-          const { answer, conversationId, usedCachedScript, previousId } = await askShelley(query);
-          
-          // Check if answer is a DashboardResponse or plain text
-          const isDashboard = typeof answer === 'object' && answer !== null && 'blocks' in answer;
-          
-          return Response.json({
-            question: query,
-            answer,
-            isDashboard,
-            conversationId,
-            usedCachedScript,
-            previousId,
-            timestamp: new Date().toISOString()
-          });
-          
-        } catch (error: any) {
-          console.error("Error in /api/ask:", error);
-          return Response.json({ 
-            error: "Internal server error",
-            message: error.message 
-          }, { status: 500 });
-        }
-      }
-    },
+    // Non-streaming /api/ask removed - use /api/ask/stream instead
 
 
     "/api/config": async () => {

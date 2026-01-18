@@ -1,7 +1,9 @@
-// API route handlers for ask history management
-import { getHistory, getStarredItems, starItem, unstarItem, trashItem, untrashItem } from "./ask-history";
+/**
+ * API route handlers for ask history management
+ */
+import { getHistory, toggleStar, deleteEntry, getScript, getResult } from "./ask-history";
 
-export function handleAskApiRoute(req: Request): Response | null {
+export async function handleAskApiRoute(req: Request): Promise<Response | null> {
   const url = new URL(req.url);
   const path = url.pathname;
   const method = req.method;
@@ -9,36 +11,68 @@ export function handleAskApiRoute(req: Request): Response | null {
   try {
     // GET /api/ask/history
     if (path === "/api/ask/history" && method === "GET") {
-      return handleGetHistory(url);
+      const limit = parseInt(url.searchParams.get("limit") || "100");
+      const items = await getHistory({ limit });
+      return Response.json({ items });
     }
     
-    // GET /api/ask/starred
-    if (path === "/api/ask/starred" && method === "GET") {
-      return handleGetStarred();
-    }
-    
-    // POST /api/ask/star/:id or DELETE /api/ask/star/:id
-    if (path.startsWith("/api/ask/star/")) {
+    // POST /api/ask/star/:id - toggle star
+    if (path.startsWith("/api/ask/star/") && method === "POST") {
       const id = path.split("/").pop();
       if (!id) return Response.json({ error: "Missing ID" }, { status: 400 });
       
-      if (method === "POST") {
-        return handleStarItem(id);
-      } else if (method === "DELETE") {
-        return handleUnstarItem(id);
-      }
+      const starred = await toggleStar(id);
+      return Response.json({ starred });
     }
     
-    // POST /api/ask/trash/:id or DELETE /api/ask/trash/:id
-    if (path.startsWith("/api/ask/trash/")) {
+    // DELETE /api/ask/history/:id - delete entry
+    if (path.startsWith("/api/ask/history/") && method === "DELETE") {
       const id = path.split("/").pop();
       if (!id) return Response.json({ error: "Missing ID" }, { status: 400 });
       
-      if (method === "POST") {
-        return handleTrashItem(id);
-      } else if (method === "DELETE") {
-        return handleUntrashItem(id);
+      const success = await deleteEntry(id);
+      if (!success) {
+        return Response.json({ error: "Item not found" }, { status: 404 });
       }
+      return Response.json({ success: true });
+    }
+    
+    // GET /api/ask/script/:id - get script content
+    if (path.startsWith("/api/ask/script/") && method === "GET") {
+      const id = path.split("/").pop();
+      if (!id) return Response.json({ error: "Missing ID" }, { status: 400 });
+      
+      const script = await getScript(id);
+      if (!script) {
+        return Response.json({ error: "Script not found" }, { status: 404 });
+      }
+      return new Response(script, {
+        headers: { "Content-Type": "text/plain" }
+      });
+    }
+    
+    // GET /api/ask/result/:id - get cached result
+    if (path.startsWith("/api/ask/result/") && method === "GET") {
+      const id = path.split("/").pop();
+      if (!id) return Response.json({ error: "Missing ID" }, { status: 400 });
+      
+      const result = await getResult(id);
+      if (!result) {
+        return Response.json({ error: "Result not found" }, { status: 404 });
+      }
+      return Response.json(result);
+    }
+    
+    // POST /api/ask/trash/:id - alias for delete (backwards compat)
+    if (path.startsWith("/api/ask/trash/") && method === "POST") {
+      const id = path.split("/").pop();
+      if (!id) return Response.json({ error: "Missing ID" }, { status: 400 });
+      
+      const success = await deleteEntry(id);
+      if (!success) {
+        return Response.json({ error: "Item not found" }, { status: 404 });
+      }
+      return Response.json({ success: true });
     }
     
     return null; // Not handled by this router
@@ -49,50 +83,4 @@ export function handleAskApiRoute(req: Request): Response | null {
       message: error.message 
     }, { status: 500 });
   }
-}
-
-async function handleGetHistory(url: URL): Promise<Response> {
-  const limit = parseInt(url.searchParams.get("limit") || "1000");
-  const starred = url.searchParams.get("starred") === "true" ? true : undefined;
-  const trashed = url.searchParams.get("trashed") === "true" ? true : undefined;
-  
-  const items = await getHistory({ limit, starred, trashed });
-  return Response.json({ items });
-}
-
-async function handleGetStarred(): Promise<Response> {
-  const items = await getStarredItems(5);
-  return Response.json({ items });
-}
-
-async function handleStarItem(id: string): Promise<Response> {
-  const success = await starItem(id);
-  if (!success) {
-    return Response.json({ error: "Item not found" }, { status: 404 });
-  }
-  return Response.json({ success: true });
-}
-
-async function handleUnstarItem(id: string): Promise<Response> {
-  const success = await unstarItem(id);
-  if (!success) {
-    return Response.json({ error: "Item not found" }, { status: 404 });
-  }
-  return Response.json({ success: true });
-}
-
-async function handleTrashItem(id: string): Promise<Response> {
-  const success = await trashItem(id);
-  if (!success) {
-    return Response.json({ error: "Item not found" }, { status: 404 });
-  }
-  return Response.json({ success: true });
-}
-
-async function handleUntrashItem(id: string): Promise<Response> {
-  const success = await untrashItem(id);
-  if (!success) {
-    return Response.json({ error: "Item not found" }, { status: 404 });
-  }
-  return Response.json({ success: true });
 }

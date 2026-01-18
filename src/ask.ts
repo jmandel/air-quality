@@ -289,44 +289,39 @@ async function loadHistory() {
     const response = await fetch("/api/ask/history");
     if (!response.ok) throw new Error("Failed to load history");
     
-    const {items: history} = await response.json();
+    const { items: history } = await response.json();
     
-    if (history.length === 0) {
+    if (!history || history.length === 0) {
       historyCatalogEl.classList.add("hidden");
+      starredSectionEl.classList.add("hidden");
       return;
     }
 
-    // Filter starred queries
+    // Filter starred queries for quick access chips
     const starred = history.filter((item: any) => item.starred);
     
     if (starred.length > 0) {
       starredChipsEl.innerHTML = starred
         .map((item: any) => `<span class="starred-chip" data-id="${item.id}">${escapeHtml(item.question)}</span>`)
         .join("");
-      
       starredSectionEl.classList.remove("hidden");
-      
-      // Add click handlers to starred chips
-      starredChipsEl.querySelectorAll(".starred-chip").forEach((chip) => {
-        chip.addEventListener("click", () => {
-          const id = chip.getAttribute("data-id");
-          if (id) loadHistoryItem(id);
-        });
-      });
+    } else {
+      starredSectionEl.classList.add("hidden");
     }
 
-    // Render full history
+    // Render full history list
     historyListEl.innerHTML = history
       .map((item: any) => {
         const starIcon = item.starred ? "⭐" : "☆";
-        const timeStr = new Date(item.timestamp).toLocaleString();
+        const timeStr = new Date(item.lastRunAt || item.createdAt).toLocaleString();
+        const runInfo = item.runCount > 1 ? ` (${item.runCount}×)` : "";
         return `
-          <div class="history-item">
-            <div class="history-item-question" data-id="${item.id}">${escapeHtml(item.question)}</div>
-            <div class="history-item-time">${timeStr}</div>
-            <div class="history-item-actions">
-              <button class="history-btn star-btn ${item.starred ? "starred" : ""}" data-id="${item.id}" title="${item.starred ? "Unstar" : "Star"}">${starIcon}</button>
-              <button class="history-btn delete-btn" data-id="${item.id}" title="Delete">🗑️</button>
+          <div class="history-item" data-id="${item.id}">
+            <div class="history-item-question">${escapeHtml(item.question)}${runInfo}</div>
+            <div class="history-item-meta">
+              <span class="history-item-time">${timeStr}</span>
+              <button class="history-btn star-btn ${item.starred ? "starred" : ""}" title="${item.starred ? "Unstar" : "Star"}">${starIcon}</button>
+              <button class="history-btn delete-btn" title="Delete">×</button>
             </div>
           </div>
         `;
@@ -335,58 +330,48 @@ async function loadHistory() {
 
     historyCatalogEl.classList.remove("hidden");
 
-    // Add event listeners
-    historyListEl.querySelectorAll(".history-item-question").forEach((el) => {
-      el.addEventListener("click", () => {
-        const id = el.getAttribute("data-id");
-        if (id) loadHistoryItem(id);
-      });
-    });
-
-    historyListEl.querySelectorAll(".star-btn").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const id = btn.getAttribute("data-id");
-        if (!id) return;
-
-        const isStarred = btn.classList.contains("starred");
-        const method = isStarred ? "DELETE" : "POST";
-        await fetch(`/api/ask/star/${id}`, { method });
+    // Event delegation for history items
+    historyListEl.onclick = async (e) => {
+      const target = e.target as HTMLElement;
+      const item = target.closest(".history-item") as HTMLElement;
+      if (!item) return;
+      
+      const id = item.dataset.id;
+      if (!id) return;
+      
+      if (target.closest(".star-btn")) {
+        await fetch(`/api/ask/star/${id}`, { method: "POST" });
         loadHistory();
-      });
-    });
-
-    historyListEl.querySelectorAll(".delete-btn").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const id = btn.getAttribute("data-id");
-        if (id && confirm("Delete this query from history?")) {
+      } else if (target.closest(".delete-btn")) {
+        if (confirm("Delete this query?")) {
           await fetch(`/api/ask/trash/${id}`, { method: "POST" });
           loadHistory();
         }
-      });
-    });
+      } else {
+        // Click on question - re-run it
+        const historyItem = history.find((h: any) => h.id === id);
+        if (historyItem) {
+          queryInput.value = historyItem.question;
+          askQuestion(historyItem.question);
+        }
+      }
+    };
+    
+    // Starred chips click handler
+    starredChipsEl.onclick = (e) => {
+      const chip = (e.target as HTMLElement).closest(".starred-chip") as HTMLElement;
+      if (!chip) return;
+      
+      const id = chip.dataset.id;
+      const historyItem = history.find((h: any) => h.id === id);
+      if (historyItem) {
+        queryInput.value = historyItem.question;
+        askQuestion(historyItem.question);
+      }
+    };
+    
   } catch (err) {
     console.error("Failed to load history:", err);
-  }
-}
-
-async function loadHistoryItem(id: string) {
-  // First fetch metadata to get the question text
-  try {
-    const metaResponse = await fetch(`/api/ask/history?limit=1000`);
-    if (!metaResponse.ok) throw new Error("Failed to load history");
-    const historyData = await metaResponse.json();
-    const item = historyData.items.find((i: any) => i.id === id);
-    if (!item) throw new Error("History item not found");
-    
-    // Update query input and reuse the normal ask flow (cache keyed by question text)
-    queryInput.value = item.question;
-    askQuestion(item.question);
-    
-  } catch (err) {
-    console.error("Failed to load history item:", err);
-    errorEl.textContent = "Failed to load history item";
-    errorEl.classList.remove("hidden");
-    loadingEl.classList.add("hidden");
   }
 }
 

@@ -37,3 +37,4 @@ index-addition.txt
 start-server.sh
 *.broken
 ask-stream-client.ts
+dist/

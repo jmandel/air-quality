@@ -1,4 +1,7 @@
-import { DashboardResponse, Block } from "./dashboard-types";
+import { VegaLiteResponse, VegaBlock } from "./vega-types";
+
+type DashboardResponse = VegaLiteResponse;
+type Block = VegaBlock;
 
 const queryInput = document.getElementById("query-input") as HTMLInputElement;
 const askBtn = document.getElementById("ask-btn") as HTMLButtonElement;
@@ -93,7 +96,8 @@ function askQuestion(query: string) {
   
   eventSource.addEventListener("shelley_progress", (e: any) => {
     const data = JSON.parse(e.data);
-    progressEl.textContent += `${data}\n`;
+    const msg = typeof data === 'object' ? (data.elapsed ? `⏳ ${Math.round(data.elapsed/1000)}s...` : JSON.stringify(data)) : String(data);
+    progressEl.textContent += `${msg}\n`;
     progressEl.scrollTop = progressEl.scrollHeight;
   });
   
@@ -245,7 +249,9 @@ function renderDashboard(answer: DashboardResponse) {
   // Render any charts after DOM is ready
   setTimeout(() => {
     answer.blocks?.forEach((block, index) => {
-      if (block.type === "chart") {
+      if (block.type === "vega-lite" && block.spec) {
+        renderVegaLite(`vega-${index}`, block.spec);
+      } else if (block.type === "chart") {
         renderChart(`chart-${index}`, block);
       }
     });
@@ -259,39 +265,40 @@ function renderBlock(block: Block, index?: number): string {
         <div class="tile text-${block.variant || "info"}">
           <div class="tile-title">${escapeHtml(block.title || "")}</div>
           <div class="text-content">
-            ${escapeHtml(block.content)}
+            ${escapeHtml(block.content || "")}
           </div>
         </div>
       `;
 
     case "metric": {
       const statusClass = block.status ? ` ${block.status}` : "";
-      const trendHtml = block.trend
-        ? `
-          <div class="metric-trend">
-            <span class="trend-arrow ${block.trend.direction}">${getTrendArrow(block.trend.direction)}</span>
-            <span>${block.trend.label || `${block.trend.percentage || ""}% ${block.trend.period || ""}`}</span>
-          </div>
-        `
-        : "";
-      
       return `
         <div class="tile metric${statusClass}">
-          <div class="tile-title">${escapeHtml(block.title)}</div>
+          <div class="tile-title">${escapeHtml(block.title || "")}</div>
           <div class="metric-value">
             ${block.value}
             ${block.unit ? `<span class="metric-unit">${escapeHtml(block.unit)}</span>` : ""}
           </div>
-          ${trendHtml}
         </div>
       `;
     }
 
+    case "vega-lite": {
+      const vegaId = index !== undefined ? `vega-${index}` : `vega-${Math.random().toString(36).substr(2, 9)}`;
+      return `
+        <div class="tile vega-chart">
+          <div class="tile-title">${escapeHtml(block.title || "")}</div>
+          <div class="vega-container" id="${vegaId}" data-spec='${JSON.stringify(block.spec)}'></div>
+        </div>
+      `;
+    }
+
+    // Legacy chart support
     case "chart": {
       const chartId = index !== undefined ? `chart-${index}` : `chart-${Math.random().toString(36).substr(2, 9)}`;
       return `
         <div class="tile chart">
-          <div class="tile-title">${escapeHtml(block.title)}</div>
+          <div class="tile-title">${escapeHtml((block as any).title || "")}</div>
           <div class="chart-container">
             <canvas id="${chartId}"></canvas>
           </div>
@@ -310,6 +317,54 @@ function getTrendArrow(direction: "up" | "down" | "stable"): string {
     case "down": return "↓";
     case "stable": return "→";
   }
+}
+
+function renderVegaLite(elementId: string, spec: any) {
+  const container = document.getElementById(elementId);
+  if (!container) {
+    console.error(`Vega container not found: ${elementId}`);
+    return;
+  }
+
+  // Check if Vega-Lite is available
+  if (typeof (window as any).vegaEmbed === "undefined") {
+    console.error("Vega-Embed not loaded");
+    container.innerHTML = `<div style="padding: 20px; color: var(--muted)">Vega-Lite not loaded</div>`;
+    return;
+  }
+
+  const vegaEmbed = (window as any).vegaEmbed;
+
+  // Apply dark theme and responsive width
+  const themedSpec = {
+    ...spec,
+    config: {
+      ...spec.config,
+      background: "transparent",
+      axis: {
+        labelColor: "#cbd5e1",
+        titleColor: "#f8fafc",
+        gridColor: "#223352",
+        domainColor: "#223352",
+      },
+      legend: {
+        labelColor: "#cbd5e1",
+        titleColor: "#f8fafc",
+      },
+      title: {
+        color: "#f8fafc",
+      },
+    },
+  };
+
+  vegaEmbed(container, themedSpec, {
+    actions: false,
+    renderer: "svg",
+    theme: "dark",
+  }).catch((err: any) => {
+    console.error("Vega-Lite render error:", err);
+    container.innerHTML = `<div style="padding: 20px; color: var(--danger)">Failed to render chart: ${err.message}</div>`;
+  });
 }
 
 function renderChart(elementId: string, block: any) {

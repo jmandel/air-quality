@@ -365,6 +365,21 @@
       margin-top: 16px;
     }
 
+    .vega-container {
+      width: 100%;
+      min-height: 300px;
+      margin-top: 16px;
+    }
+
+    .vega-container svg {
+      width: 100%;
+    }
+
+    .tile.vega-chart {
+      min-width: 400px;
+      flex: 2;
+    }
+
     /* History catalog */
     .history-catalog {
       background: var(--surface);
@@ -564,6 +579,12 @@
     </div>
   </div>
 
+  <!-- Vega-Lite for visualizations -->
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  
+  <!-- Legacy Chart.js support -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>

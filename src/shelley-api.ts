@@ -123,6 +123,48 @@ export async function waitForCompletion(
 /**
  * Stream conversation progress via SSE
  */
+/**
+ * Parse message content from llm_data
+ */
+function parseMessageContent(msg: ShelleyMessage): { texts: string[]; tools: { name: string; input?: string }[] } {
+  const result = { texts: [] as string[], tools: [] as { name: string; input?: string }[] };
+  if (!msg.llm_data) return result;
+  
+  try {
+    const data = JSON.parse(msg.llm_data);
+    for (const content of data.Content || []) {
+      if (content.Type === 0 && content.Text) {
+        result.texts.push(content.Text);
+      } else if (content.Type === 3 && content.ToolName) {
+        result.tools.push({ name: content.ToolName, input: content.ToolInput });
+      }
+    }
+  } catch {}
+  return result;
+}
+
+/**
+ * Parse tool result content
+ */
+function parseToolResult(msg: ShelleyMessage): string | null {
+  if (!msg.llm_data) return null;
+  try {
+    const data = JSON.parse(msg.llm_data);
+    // Tool results have Content array with tool_result type
+    for (const content of data.Content || []) {
+      if (content.ToolResult) {
+        // Get first text from tool result
+        for (const r of content.ToolResult) {
+          if (r.Type === 0 && r.Text) {
+            return r.Text.substring(0, 150) + (r.Text.length > 150 ? '...' : '');
+          }
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
 export async function* streamConversation(
   conversationId: string,
   timeoutMs: number = 180000
@@ -134,10 +176,27 @@ export async function* streamConversation(
     const conversation = await getConversation(conversationId);
     const messages = conversation.messages || [];
     
-    // Yield new messages
+    // Process new messages
     for (let i = lastMessageCount; i < messages.length; i++) {
       const msg = messages[i];
-      yield { type: 'message', data: msg };
+      
+      if (msg.type === 'agent') {
+        const parsed = parseMessageContent(msg);
+        
+        // Report tool uses
+        for (const tool of parsed.tools) {
+          yield { type: 'tool_use', data: { tool: tool.name } };
+        }
+        
+        // Report text (thinking/response)
+        for (const text of parsed.texts) {
+          const preview = text.substring(0, 120).replace(/\n/g, ' ');
+          yield { type: 'agent_text', data: { text: preview + (text.length > 120 ? '...' : '') } };
+        }
+      } else if (msg.type === 'tool') {
+        const result = parseToolResult(msg);
+        yield { type: 'tool_result', data: { preview: result } };
+      }
     }
     lastMessageCount = messages.length;
     
@@ -151,8 +210,7 @@ export async function* streamConversation(
       }
     }
     
-    yield { type: 'progress', data: { elapsed: Date.now() - startTime, working: conversation.agent_working } };
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 800));
   }
   
   throw new Error('Timeout waiting for Shelley response');

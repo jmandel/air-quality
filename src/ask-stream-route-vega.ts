@@ -49,75 +49,57 @@ function buildPrompt(question: string, analyzePath: string): string {
   const nowMs = Date.now();
   const schemaSection = buildSchemaSection();
   
-  return `You are helping analyze air quality data from an Apollo AIR-1 sensor.
+  return `You are helping analyze air quality data. Output a SINGLE Vega-Lite specification.
 
 USER QUESTION: "${question}"
 
 DATABASE: /db/db.sqlite (SQLite, read-only)
-
-SCHEMA:
-- Table: readings (ts INTEGER ms, sensor_id INTEGER, value REAL)
-- Table: readings_aggregated (minute_ts INTEGER, sensor_id, avg_value, min_value, max_value, sample_count)
-- Table: sensors (id, name, display_name, unit)
+- readings (ts INTEGER ms, sensor_id INTEGER, value REAL)
+- readings_aggregated (minute_ts, sensor_id, avg_value, min_value, max_value, sample_count)  
+- sensors (id, name, display_name, unit)
 
 ${schemaSection}
 
 CURRENT TIME: ${now} (${nowMs} ms)
 
-TASK: Write a TypeScript script to ${analyzePath} that:
-1. Queries the database using bun:sqlite
-2. Outputs JSON with Vega-Lite visualizations
+TASK: Write TypeScript to ${analyzePath} that outputs a SINGLE Vega-Lite JSON spec.
 
-IMPORTANT:
-- Calculate timestamps dynamically (use Date.now(), not hardcoded values)
-- Database path inside sandbox is /db/db.sqlite
-- Output ONLY valid JSON to stdout
+RULES:
+- Use Date.now() for timestamps (not hardcoded)
+- Database path: /db/db.sqlite
+- Output ONLY the Vega-Lite JSON to stdout
+- Use vconcat/hconcat for multiple charts
+- Use text marks for metrics/labels
+- Use title.text and title.subtitle for summary
 
-OUTPUT SCHEMA:
-
-${vegaTypesSource}
-
-EXAMPLE SCRIPT:
-
+EXAMPLE:
 \`\`\`typescript
 import { Database } from "bun:sqlite";
-
 const db = new Database("/db/db.sqlite", { readonly: true });
 const now = Date.now();
-const sixHoursAgo = now - 6 * 60 * 60 * 1000;
+const hourAgo = now - 60 * 60 * 1000;
 
-// Get CO2 data
-const data = db.query(\`
-  SELECT ts, value 
-  FROM readings 
-  WHERE sensor_id = 1 AND ts >= ? 
-  ORDER BY ts
-\`).all(sixHoursAgo) as Array<{ts: number, value: number}>;
+const data = db.query("SELECT ts, value FROM readings WHERE sensor_id = 1 AND ts >= ? ORDER BY ts")
+  .all(hourAgo) as Array<{ts: number, value: number}>;
+const current = data[data.length - 1]?.value ?? 0;
 
-const response = {
-  summary: "CO₂ levels over the last 6 hours",
-  blocks: [{
-    type: "vega-lite",
-    title: "CO₂ Concentration",
-    spec: {
-      "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-      "width": "container",
-      "height": 300,
-      "data": { "values": data.map(d => ({ time: new Date(d.ts).toISOString(), value: d.value })) },
-      "mark": { "type": "line", "strokeWidth": 2, "color": "#3b82f6" },
-      "encoding": {
-        "x": { "field": "time", "type": "temporal", "title": "Time" },
-        "y": { "field": "value", "type": "quantitative", "title": "CO₂ (ppm)", "scale": { "zero": false } }
-      }
-    }
-  }]
+const spec = {
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "title": { "text": "CO₂ Level: " + current + " ppm", "subtitle": "Last hour trend" },
+  "width": "container",
+  "height": 300,
+  "data": { "values": data.map(d => ({ t: new Date(d.ts).toISOString(), v: d.value })) },
+  "mark": { "type": "line", "strokeWidth": 2 },
+  "encoding": {
+    "x": { "field": "t", "type": "temporal", "title": "Time" },
+    "y": { "field": "v", "type": "quantitative", "title": "ppm", "scale": { "zero": false } }
+  }
 };
-
-console.log(JSON.stringify(response));
+console.log(JSON.stringify(spec));
 db.close();
 \`\`\`
 
-Now write the script to answer: "${question}"`;
+Write script for: "${question}"`;
 }
 
 /**
@@ -220,8 +202,12 @@ export async function handleAskStreamVega(req: Request): Promise<Response> {
           
           // Stream progress
           for await (const event of streamConversation(conversationId, 180000)) {
-            if (event.type === "progress") {
-              send("shelley_progress", event.data);
+            if (event.type === "tool_use") {
+              send("shelley_progress", { type: "tool", tool: event.data.tool });
+            } else if (event.type === "tool_result") {
+              send("shelley_progress", { type: "tool_done", preview: event.data.preview });
+            } else if (event.type === "agent_text") {
+              send("shelley_progress", { type: "thinking", text: event.data.text });
             } else if (event.type === "complete") {
               send("shelley_complete", { conversationId });
               break;

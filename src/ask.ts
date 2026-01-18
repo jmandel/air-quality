@@ -1,7 +1,4 @@
-import { VegaLiteResponse, VegaBlock } from "./vega-types";
-
-type DashboardResponse = VegaLiteResponse;
-type Block = VegaBlock;
+import type { VegaLiteSpec } from "./vega-types";
 
 const queryInput = document.getElementById("query-input") as HTMLInputElement;
 const askBtn = document.getElementById("ask-btn") as HTMLButtonElement;
@@ -96,8 +93,20 @@ function askQuestion(query: string) {
   
   eventSource.addEventListener("shelley_progress", (e: any) => {
     const data = JSON.parse(e.data);
-    const msg = typeof data === 'object' ? (data.elapsed ? `⏳ ${Math.round(data.elapsed/1000)}s...` : JSON.stringify(data)) : String(data);
-    progressEl.textContent += `${msg}\n`;
+    let msg = '';
+    
+    if (data.type === 'tool') {
+      msg = `🔧 ${data.tool}`;
+      progressEl.textContent += `${msg}\n`;
+    } else if (data.type === 'tool_done') {
+      msg = `   → ${data.preview || 'done'}`;
+      progressEl.textContent += `${msg}\n`;
+    } else if (data.type === 'thinking') {
+      msg = `💭 ${data.text}`;
+      progressEl.textContent += `${msg}\n`;
+    }
+    // Skip 'waiting' type - not informative
+    
     progressEl.scrollTop = progressEl.scrollHeight;
   });
   
@@ -181,44 +190,24 @@ function askQuestion(query: string) {
   };
 }
 
-function renderDashboard(answer: DashboardResponse) {
+function renderDashboard(spec: VegaLiteSpec) {
   // Store the raw JSON for the JSON tab
-  currentResultJson = answer;
+  currentResultJson = spec;
   
-  // Create tab container
-  let html = `
+  // Create tab container with single vega-lite viz
+  const html = `
     <div class="result-tabs">
       <div class="tab-buttons">
-        <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
-        <button class="tab-btn" data-tab="json">📋 JSON</button>
+        <button class="tab-btn active" data-tab="dashboard">📊 Visualization</button>
+        <button class="tab-btn" data-tab="json">📋 Spec</button>
         <button class="tab-btn" data-tab="script">💻 Script</button>
       </div>
       <div class="tab-content">
         <div class="tab-pane active" id="tab-dashboard">
-  `;
-
-  // Render summary
-  if (answer.summary) {
-    html += `
-      <div class="summary">
-        ${escapeHtml(answer.summary)}
-      </div>
-    `;
-  }
-
-  // Render blocks
-  if (answer.blocks && answer.blocks.length > 0) {
-    html += '<div class="tiles">';
-    for (let i = 0; i < answer.blocks.length; i++) {
-      html += renderBlock(answer.blocks[i], i);
-    }
-    html += "</div>";
-  }
-  
-  html += `
+          <div id="vega-container" class="vega-main"></div>
         </div>
         <div class="tab-pane" id="tab-json">
-          <pre class="code-block">${escapeHtml(JSON.stringify(answer, null, 2))}</pre>
+          <pre class="code-block">${escapeHtml(JSON.stringify(spec, null, 2))}</pre>
         </div>
         <div class="tab-pane" id="tab-script">
           <pre class="code-block">${currentScriptContent ? escapeHtml(currentScriptContent) : 'Loading script...'}</pre>
@@ -234,89 +223,16 @@ function renderDashboard(answer: DashboardResponse) {
   dashboardEl.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const tabName = btn.getAttribute('data-tab');
-      
-      // Update active button
       dashboardEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      
-      // Update active pane
       dashboardEl.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
       const pane = dashboardEl.querySelector(`#tab-${tabName}`);
       if (pane) pane.classList.add('active');
     });
   });
   
-  // Render any charts after DOM is ready
-  setTimeout(() => {
-    answer.blocks?.forEach((block, index) => {
-      if (block.type === "vega-lite" && block.spec) {
-        renderVegaLite(`vega-${index}`, block.spec);
-      } else if (block.type === "chart") {
-        renderChart(`chart-${index}`, block);
-      }
-    });
-  }, 0);
-}
-
-function renderBlock(block: Block, index?: number): string {
-  switch (block.type) {
-    case "text":
-      return `
-        <div class="tile text-${block.variant || "info"}">
-          <div class="tile-title">${escapeHtml(block.title || "")}</div>
-          <div class="text-content">
-            ${escapeHtml(block.content || "")}
-          </div>
-        </div>
-      `;
-
-    case "metric": {
-      const statusClass = block.status ? ` ${block.status}` : "";
-      return `
-        <div class="tile metric${statusClass}">
-          <div class="tile-title">${escapeHtml(block.title || "")}</div>
-          <div class="metric-value">
-            ${block.value}
-            ${block.unit ? `<span class="metric-unit">${escapeHtml(block.unit)}</span>` : ""}
-          </div>
-        </div>
-      `;
-    }
-
-    case "vega-lite": {
-      const vegaId = index !== undefined ? `vega-${index}` : `vega-${Math.random().toString(36).substr(2, 9)}`;
-      return `
-        <div class="tile vega-chart">
-          <div class="tile-title">${escapeHtml(block.title || "")}</div>
-          <div class="vega-container" id="${vegaId}" data-spec='${JSON.stringify(block.spec)}'></div>
-        </div>
-      `;
-    }
-
-    // Legacy chart support
-    case "chart": {
-      const chartId = index !== undefined ? `chart-${index}` : `chart-${Math.random().toString(36).substr(2, 9)}`;
-      return `
-        <div class="tile chart">
-          <div class="tile-title">${escapeHtml((block as any).title || "")}</div>
-          <div class="chart-container">
-            <canvas id="${chartId}"></canvas>
-          </div>
-        </div>
-      `;
-    }
-
-    default:
-      return "";
-  }
-}
-
-function getTrendArrow(direction: "up" | "down" | "stable"): string {
-  switch (direction) {
-    case "up": return "↑";
-    case "down": return "↓";
-    case "stable": return "→";
-  }
+  // Render the single Vega-Lite spec
+  setTimeout(() => renderVegaLite('vega-container', spec), 0);
 }
 
 function renderVegaLite(elementId: string, spec: any) {
@@ -367,156 +283,6 @@ function renderVegaLite(elementId: string, spec: any) {
   });
 }
 
-function renderChart(elementId: string, block: any) {
-  const canvas = document.getElementById(elementId) as HTMLCanvasElement;
-  if (!canvas) {
-    console.error(`Canvas not found: ${elementId}`);
-    return;
-  }
-
-  // Check if Chart.js is available
-  if (typeof (window as any).Chart === "undefined") {
-    console.error("Chart.js not loaded");
-    canvas.parentElement!.innerHTML = `<div style="padding: 20px; color: var(--muted)">Chart.js not loaded</div>`;
-    return;
-  }
-
-  const Chart = (window as any).Chart;
-
-  // Convert our data format to Chart.js format
-  const datasets = block.series.map((s: any) => ({
-    label: s.name,
-    data: s.data.map((d: any) => ({ x: d.x, y: d.y })),
-    borderColor: s.color || "#3b82f6",
-    backgroundColor: s.color ? `${s.color}33` : "#3b82f633",
-    borderWidth: 3,  // Thicker lines
-    pointRadius: 0,  // No dots on line
-    pointHoverRadius: 6,  // Show dot on hover
-    tension: 0.2,  // Less smoothing for punchier look
-    fill: block.chartType === "area",
-  }));
-
-  // Build annotations from threshold lines
-  const annotations: any = {};
-  if (block.annotations && block.annotations.length > 0) {
-    block.annotations.forEach((ann: any, idx: number) => {
-      if (ann.type === "threshold") {
-        annotations[`line${idx}`] = {
-          type: "line",
-          yMin: ann.value,
-          yMax: ann.value,
-          borderColor: ann.color || "#ef4444",
-          borderWidth: 2,
-          borderDash: [8, 4],
-          label: {
-            display: true,
-            content: ann.label,
-            position: "end",
-            backgroundColor: ann.color || "#ef4444",
-            color: "#fff",
-            font: {
-              size: 12,
-              weight: "bold",
-            },
-            padding: 6,
-          },
-        };
-      }
-    });
-  }
-
-  new Chart(canvas, {
-    type: block.chartType === "area" ? "line" : (block.chartType || "line"),
-    data: { datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,  // NO ANIMATIONS
-      interaction: {
-        mode: "index",
-        intersect: false,
-      },
-      plugins: {
-        legend: {
-          display: true,
-          position: "bottom",
-          labels: {
-            font: {
-              size: 14,
-              weight: "bold",
-            },
-            color: "#f8fafc",
-            padding: 16,
-            usePointStyle: true,
-          },
-        },
-        annotation: {
-          annotations,
-        },
-      },
-      scales: {
-        x: {
-          type: block.xAxis.type === "time" ? "time" : "category",
-          title: {
-            display: true,
-            text: block.xAxis.label,
-            font: {
-              size: 16,
-              weight: "bold",
-            },
-            color: "#f8fafc",
-            padding: { top: 12 },
-          },
-          ticks: {
-            font: {
-              size: 13,
-              weight: "500",
-            },
-            color: "#cbd5e1",
-            maxRotation: 0,
-            autoSkipPadding: 20,
-          },
-          grid: {
-            color: "#223352",
-            lineWidth: 1,
-          },
-          time: block.xAxis.type === "time" ? {
-            displayFormats: {
-              hour: "HH:mm",
-              minute: "HH:mm",
-            },
-          } : undefined,
-        },
-        y: {
-          title: {
-            display: true,
-            text: block.yAxis.unit ? `${block.yAxis.label} (${block.yAxis.unit})` : block.yAxis.label,
-            font: {
-              size: 16,
-              weight: "bold",
-            },
-            color: "#f8fafc",
-            padding: { bottom: 12 },
-          },
-          ticks: {
-            font: {
-              size: 13,
-              weight: "500",
-            },
-            color: "#cbd5e1",
-            padding: 10,
-          },
-          grid: {
-            color: "#223352",
-            lineWidth: 1,
-          },
-          min: block.yAxis.min,
-          max: block.yAxis.max,
-        },
-      },
-    },
-  });
-}
 
 async function loadHistory() {
   try {

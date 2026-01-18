@@ -6,7 +6,9 @@ This directory contains ESPHome configuration for the Apollo AIR-1 air quality m
 
 ```
 air1-cloud/
-├── air1_cloud.yaml              # Your config (WiFi creds, HTTP posting logic)
+├── air1_cloud.yaml              # Main config (HTTP posting logic, references secrets)
+├── secrets.yaml                 # Your WiFi credentials (gitignored)
+├── secrets.yaml.example         # Template for secrets.yaml
 │       ↓ includes
 └── vendor-apollo/               # Apollo repo via git subtree
     └── Integrations/ESPHome/
@@ -109,20 +111,37 @@ Every 60 seconds (while awake), the device POSTs to your configured endpoint:
 
 ## Setup
 
-### 1. Update WiFi & Endpoint
+### 1. Configure Secrets
 
-Edit `air1_cloud.yaml`:
+WiFi credentials are stored in `secrets.yaml` (gitignored) to keep them out of version control.
+
+```bash
+cd air1-cloud
+
+# Copy the example file
+cp secrets.yaml.example secrets.yaml
+
+# Edit with your credentials
+nano secrets.yaml
+```
+
+Your `secrets.yaml` should look like:
+
+```yaml
+wifi_ssid: "your-wifi-network"
+wifi_password: "your-wifi-password"
+```
+
+### 2. Update Cloud Endpoint
+
+Edit `air1_cloud.yaml` to set your cloud endpoint:
 
 ```yaml
 substitutions:
   cloud_endpoint: "https://your-server.com/api/ingest"
-
-wifi:
-  ssid: "your-network"
-  password: "your-password"
 ```
 
-### 2. Build & Flash
+### 3. Build & Flash
 
 First time (via USB):
 
@@ -137,7 +156,7 @@ Subsequent updates (OTA):
 uvx --with pip esphome run air1_cloud.yaml --device 192.168.x.y
 ```
 
-### 3. Monitor
+### 4. Monitor
 
 ```bash
 # Watch logs
@@ -215,10 +234,12 @@ git commit -m "Add ID for XYZ sensor"
 
 ## Files
 
-- `air1_cloud.yaml` – Main ESPHome config (WiFi, HTTP, interval posting)
+- `air1_cloud.yaml` – Main ESPHome config (references secrets, HTTP posting logic)
+- `secrets.yaml` – Your WiFi credentials (gitignored, never committed)
+- `secrets.yaml.example` – Template for secrets.yaml
 - `vendor-apollo/` – Apollo's AIR-1 repo merged via git subtree (8 sensor IDs added)
 - `README.md` – This file
-- `.gitignore` – Excludes ESPHome build artifacts
+- `.gitignore` – Excludes ESPHome build artifacts and secrets.yaml
 
 **View your sensor ID changes:**
 ```bash

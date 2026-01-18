@@ -23,9 +23,8 @@ esphome:
   name_add_mac_suffix: false
 
 wifi:
-  # TODO: put your real Wi‑Fi details here
-  ssid: "cup-o-guest"
-  password: "WIFI_PASSWORD_REDACTED"
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
 
   # Optional but handy: if you give the AIR‑1 a DHCP reservation,
   # you can tell ESPHome to always use that address for OTA uploads.

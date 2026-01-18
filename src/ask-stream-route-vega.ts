@@ -49,7 +49,7 @@ function buildPrompt(question: string, analyzePath: string): string {
   const nowMs = Date.now();
   const schemaSection = buildSchemaSection();
   
-  return `You are helping analyze air quality data. Output a SINGLE Vega-Lite specification.
+  return `You are a data visualization expert creating air quality dashboards. Output a SINGLE Vega-Lite specification.
 
 USER QUESTION: "${question}"
 
@@ -64,15 +64,89 @@ CURRENT TIME: ${now} (${nowMs} ms)
 
 TASK: Write TypeScript to ${analyzePath} that outputs a SINGLE Vega-Lite JSON spec.
 
-RULES:
-- Use Date.now() for timestamps (not hardcoded)
-- Database path: /db/db.sqlite
-- Output ONLY the Vega-Lite JSON to stdout
-- Use vconcat/hconcat for multiple charts
-- Use text marks for metrics/labels
-- Use title.text and title.subtitle for summary
+## TECHNICAL RULES
+- Use Date.now() for timestamps (not hardcoded values)
+- Database path: /db/db.sqlite  
+- Output ONLY valid Vega-Lite JSON to stdout
+- Always close db connection
 
-EXAMPLE:
+## VISUALIZATION DESIGN GUIDE
+
+### Layout Strategy
+- Use "vconcat" to stack charts vertically (best for time series comparisons)
+- Use "hconcat" for side-by-side comparisons (e.g., current vs average)
+- Use "layer" to overlay threshold lines, annotations, or multiple series
+- Use "facet" to create small multiples by sensor type
+
+### Title & Summary (IMPORTANT)
+- title.text: Key insight or current value (e.g., "CO₂: 650 ppm - Good")
+- title.subtitle: Context/range (e.g., "Last 6 hours | Range: 480-720 ppm")
+- Make titles answer the user's question directly
+
+### Effective Chart Types
+- LINE: Time series trends (use strokeWidth: 2-3 for visibility)
+- AREA: Cumulative or range visualization  
+- BAR: Comparisons, hourly/daily aggregates
+- POINT: Scatter plots for correlation
+- RULE: Threshold lines (layer these over main chart)
+- TEXT: Big number displays, annotations
+
+### Color Coding (use consistently)
+- Good/Normal: #22c55e (green)
+- Warning: #f59e0b (amber)  
+- Critical/Bad: #ef4444 (red)
+- Neutral/Info: #3b82f6 (blue)
+- Use color to encode status, not just decoration
+
+### Threshold Lines (very useful for air quality!)
+Add horizontal rules for health thresholds:
+\`\`\`json
+"layer": [
+  { /* main chart */ },
+  {
+    "mark": {"type": "rule", "strokeDash": [4,4], "color": "#f59e0b"},
+    "encoding": {"y": {"datum": 800}}
+  },
+  {
+    "mark": {"type": "text", "align": "left", "dx": 5, "color": "#f59e0b"},
+    "encoding": {"y": {"datum": 800}, "text": {"value": "Warning: 800 ppm"}}
+  }
+]
+\`\`\`
+
+### Big Number Display (for "current" queries)
+Use text marks with large fontSize:
+\`\`\`json
+{
+  "mark": {"type": "text", "fontSize": 72, "fontWeight": "bold"},
+  "encoding": {"text": {"value": "650 ppm"}}
+}
+\`\`\`
+
+### Multi-Sensor Comparison
+Use facet or color encoding:
+\`\`\`json
+"encoding": {
+  "color": {"field": "sensor", "type": "nominal"},
+  "y": {"field": "value", "type": "quantitative"}
+}
+\`\`\`
+
+### Sparklines (compact trends)
+Small, minimal charts:
+\`\`\`json
+{"width": 200, "height": 50, "mark": "line", "encoding": {...}}
+\`\`\`
+
+### Best Practices
+1. Always show units in axis titles or annotations
+2. Use "scale": {"zero": false} for narrow-range data (temp, pressure)
+3. Add context: min/max/avg in subtitle
+4. For status questions, lead with a clear good/warning/critical indicator
+5. For trends, show direction with annotations or title
+6. Format times nicely: use timeUnit in encoding
+
+## EXAMPLE - Current Value with Trend
 \`\`\`typescript
 import { Database } from "bun:sqlite";
 const db = new Database("/db/db.sqlite", { readonly: true });
@@ -82,18 +156,35 @@ const hourAgo = now - 60 * 60 * 1000;
 const data = db.query("SELECT ts, value FROM readings WHERE sensor_id = 1 AND ts >= ? ORDER BY ts")
   .all(hourAgo) as Array<{ts: number, value: number}>;
 const current = data[data.length - 1]?.value ?? 0;
+const avg = data.reduce((s,d) => s + d.value, 0) / data.length;
+const status = current < 800 ? "Good ✅" : current < 1000 ? "Warning ⚠️" : "Poor ❌";
 
 const spec = {
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-  "title": { "text": "CO₂ Level: " + current + " ppm", "subtitle": "Last hour trend" },
+  "title": { 
+    "text": "CO₂: " + Math.round(current) + " ppm - " + status,
+    "subtitle": "Avg: " + Math.round(avg) + " ppm | Last hour"
+  },
   "width": "container",
-  "height": 300,
-  "data": { "values": data.map(d => ({ t: new Date(d.ts).toISOString(), v: d.value })) },
-  "mark": { "type": "line", "strokeWidth": 2 },
-  "encoding": {
-    "x": { "field": "t", "type": "temporal", "title": "Time" },
-    "y": { "field": "v", "type": "quantitative", "title": "ppm", "scale": { "zero": false } }
-  }
+  "height": 250,
+  "layer": [
+    {
+      "data": { "values": data.map(d => ({ t: new Date(d.ts).toISOString(), v: d.value })) },
+      "mark": { "type": "area", "line": true, "color": "#3b82f6", "opacity": 0.3 },
+      "encoding": {
+        "x": { "field": "t", "type": "temporal", "title": "Time" },
+        "y": { "field": "v", "type": "quantitative", "title": "CO₂ (ppm)", "scale": { "zero": false } }
+      }
+    },
+    {
+      "mark": {"type": "rule", "color": "#f59e0b", "strokeDash": [4,4]},
+      "encoding": {"y": {"datum": 800}}
+    },
+    {
+      "mark": {"type": "rule", "color": "#ef4444", "strokeDash": [4,4]},
+      "encoding": {"y": {"datum": 1000}}
+    }
+  ]
 };
 console.log(JSON.stringify(spec));
 db.close();

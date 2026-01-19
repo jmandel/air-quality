@@ -75,7 +75,7 @@ function askQuestion(query: string) {
   progressEl.textContent = ""; // Clear previous content
   askBtn.disabled = true;
 
-  let dashboardResult: DashboardResponse | null = null;
+  let dashboardResult: VegaLiteSpec | null = null;
 
   const eventSource = new EventSource(`/api/ask/stream?q=${encodeURIComponent(query)}`);
 
@@ -96,16 +96,20 @@ function askQuestion(query: string) {
     let msg = '';
     
     if (data.type === 'tool') {
-      msg = `🔧 ${data.tool}`;
+      const input = data.input ? `: ${data.input}` : '';
+      msg = `🔧 ${data.tool}${input}`;
       progressEl.textContent += `${msg}\n`;
     } else if (data.type === 'tool_done') {
-      msg = `   → ${data.preview || 'done'}`;
-      progressEl.textContent += `${msg}\n`;
+      if (data.preview) {
+        // Truncate long results
+        const preview = data.preview.length > 80 ? data.preview.substring(0, 80) + '...' : data.preview;
+        msg = `   → ${preview}`;
+        progressEl.textContent += `${msg}\n`;
+      }
     } else if (data.type === 'thinking') {
       msg = `💭 ${data.text}`;
       progressEl.textContent += `${msg}\n`;
     }
-    // Skip 'waiting' type - not informative
     
     progressEl.scrollTop = progressEl.scrollHeight;
   });

@@ -5,7 +5,6 @@ import uploaderPage from "./upload.html";
 import askPage from "./ask.html";
 import testStreamPage from "./test-stream.html";
 import { SENSOR_SEED_DATA } from "./seed-data";
-// Old ask-helper removed - using ask-stream-route-vega.ts now
 import { getSensorMetadata, getCurrentZone } from "./sensor-utils";
 
 const PORT = parseInt(process.env.PORT || "443", 10);

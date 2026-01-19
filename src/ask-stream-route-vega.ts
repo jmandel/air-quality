@@ -9,7 +9,7 @@ import { spawn } from "bun";
 import { findPreviousScript } from "./ask-history-lookup";
 import { saveToHistory } from "./ask-history";
 import { createConversation, streamConversation, extractFinalResponse, setShelleyAPI } from "./shelley-api";
-import { getSandboxedShelley, getSandboxedShelleyAPI } from "./sandboxed-shelley";
+import { startSandboxedShelley, type SandboxedShelley } from "./sandboxed-shelley";
 import vegaTypesSource from "./vega-types.ts" with { type: "text" };
 
 const DB_PATH = process.cwd() + "/db.sqlite";
@@ -276,6 +276,8 @@ export async function handleAskStreamVega(req: Request): Promise<Response> {
         controller.enqueue(new TextEncoder().encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`));
       };
       
+      let sandbox: SandboxedShelley | null = null;
+      
       try {
         let finalScriptContent = scriptContent;
         
@@ -285,9 +287,9 @@ export async function handleAskStreamVega(req: Request): Promise<Response> {
         } else {
           send("status", "Starting sandboxed Shelley...");
           
-          // Start sandboxed Shelley with access to the air quality database
-          const sandbox = await getSandboxedShelley(DB_PATH);
-          setShelleyAPI(getSandboxedShelleyAPI());
+          // Start a fresh sandboxed Shelley for this request
+          sandbox = await startSandboxedShelley(DB_PATH);
+          setShelleyAPI(sandbox.apiUrl);
           
           send("status", "Calling Shelley to generate analysis...");
           
@@ -297,7 +299,7 @@ export async function handleAskStreamVega(req: Request): Promise<Response> {
           
           // Create conversation via sandboxed Shelley API
           const conversationId = await createConversation(prompt, cwd, "claude-sonnet-4.5");
-          send("shelley_started", { conversationId });
+          send("shelley_started", { conversationId, port: sandbox.port });
           
           // Stream progress
           for await (const event of streamConversation(conversationId, 180000)) {
@@ -360,6 +362,10 @@ export async function handleAskStreamVega(req: Request): Promise<Response> {
         send("error", { message: error.message });
         controller.close();
       } finally {
+        // Clean up sandboxed Shelley if we started one
+        if (sandbox) {
+          await sandbox.cleanup().catch(() => {});
+        }
         await rm(tempDir, { recursive: true, force: true }).catch(() => {});
       }
     }

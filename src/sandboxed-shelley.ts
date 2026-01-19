@@ -7,6 +7,9 @@
  * - /work/db.sqlite - read-only air quality database
  * - /sandbox - shelley's own database
  * - System binaries and libraries (read-only)
+ * 
+ * Each request gets a fresh sandbox on a random port, which is cleaned up
+ * when the request completes.
  */
 
 import { spawn, type Subprocess } from "bun";
@@ -16,17 +19,42 @@ import { join } from "path";
 
 const SHELLEY_BIN = "/usr/local/bin/shelley";
 const SHELLEY_CONFIG = "/exe.dev/shelley.json";
-const SANDBOX_PORT = 9998;
 
-interface SandboxedShelley {
+// Port range for sandboxed Shelley instances
+const MIN_PORT = 9900;
+const MAX_PORT = 9950;
+
+export interface SandboxedShelley {
   port: number;
   process: Subprocess;
   workDir: string;
   sandboxDir: string;
+  apiUrl: string;
   cleanup: () => Promise<void>;
 }
 
-let currentInstance: SandboxedShelley | null = null;
+/**
+ * Find an available port in the specified range
+ */
+async function findAvailablePort(): Promise<number> {
+  const startPort = MIN_PORT + Math.floor(Math.random() * (MAX_PORT - MIN_PORT));
+  
+  for (let i = 0; i < (MAX_PORT - MIN_PORT); i++) {
+    const port = MIN_PORT + ((startPort - MIN_PORT + i) % (MAX_PORT - MIN_PORT));
+    try {
+      // Try to connect - if it fails, port is likely available
+      const response = await fetch(`http://localhost:${port}/`, { 
+        signal: AbortSignal.timeout(100) 
+      });
+      // Port is in use, try next
+    } catch {
+      // Connection failed, port is likely available
+      return port;
+    }
+  }
+  
+  throw new Error("No available ports in range");
+}
 
 /**
  * Build the bubblewrap arguments for running Shelley in a sandbox
@@ -84,20 +112,18 @@ function buildBwrapArgs(
 }
 
 /**
- * Start a sandboxed Shelley server
+ * Start a new sandboxed Shelley server for a single request.
+ * Returns a sandbox instance that should be cleaned up when done.
  */
 export async function startSandboxedShelley(airDbPath: string): Promise<SandboxedShelley> {
-  // Clean up any existing instance
-  if (currentInstance) {
-    await currentInstance.cleanup();
-  }
+  // Find an available port
+  const port = await findAvailablePort();
   
   // Create sandbox directories
   const sandboxDir = await mkdtemp(join(tmpdir(), "shelley-sandbox-"));
   const workDir = join(sandboxDir, "work");
   await mkdir(workDir, { recursive: true });
   
-  const port = SANDBOX_PORT;
   const bwrapArgs = buildBwrapArgs(sandboxDir, workDir, airDbPath, port);
   
   // Start the sandboxed Shelley process
@@ -139,54 +165,14 @@ export async function startSandboxedShelley(airDbPath: string): Promise<Sandboxe
     // Wait a bit for process to terminate
     await new Promise(resolve => setTimeout(resolve, 100));
     await rm(sandboxDir, { recursive: true, force: true });
-    if (currentInstance?.sandboxDir === sandboxDir) {
-      currentInstance = null;
-    }
   };
   
-  currentInstance = {
+  return {
     port,
     process: proc,
     workDir,
     sandboxDir,
+    apiUrl: `http://localhost:${port}/api`,
     cleanup,
   };
-  
-  return currentInstance;
-}
-
-/**
- * Get the current sandboxed Shelley instance, starting one if needed
- */
-export async function getSandboxedShelley(airDbPath: string): Promise<SandboxedShelley> {
-  if (currentInstance) {
-    // Check if the process is still running
-    try {
-      const response = await fetch(`http://localhost:${currentInstance.port}/`);
-      if (response.ok) {
-        return currentInstance;
-      }
-    } catch {
-      // Process died, clean up
-      await currentInstance.cleanup();
-    }
-  }
-  
-  return startSandboxedShelley(airDbPath);
-}
-
-/**
- * Shut down the sandboxed Shelley instance
- */
-export async function stopSandboxedShelley(): Promise<void> {
-  if (currentInstance) {
-    await currentInstance.cleanup();
-  }
-}
-
-/**
- * Get the API base URL for the sandboxed Shelley
- */
-export function getSandboxedShelleyAPI(): string {
-  return `http://localhost:${SANDBOX_PORT}/api`;
 }

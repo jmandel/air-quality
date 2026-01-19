@@ -1,0 +1,17 @@
+[Unit]
+Description=Air Quality Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=exedev
+WorkingDirectory=/home/exedev/air-quality
+Environment=BUN_INSTALL=/home/exedev/.bun
+Environment=PATH=/home/exedev/.bun/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PORT=8000
+ExecStart=/home/exedev/.bun/bin/bun run src/index.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

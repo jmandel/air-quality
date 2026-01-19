@@ -8,7 +8,8 @@ import { join } from "path";
 import { spawn } from "bun";
 import { findPreviousScript } from "./ask-history-lookup";
 import { saveToHistory } from "./ask-history";
-import { createConversation, streamConversation, extractFinalResponse } from "./shelley-api";
+import { createConversation, streamConversation, extractFinalResponse, setShelleyAPI } from "./shelley-api";
+import { getSandboxedShelley, getSandboxedShelleyAPI } from "./sandboxed-shelley";
 import vegaTypesSource from "./vega-types.ts" with { type: "text" };
 
 const DB_PATH = process.cwd() + "/db.sqlite";
@@ -53,7 +54,7 @@ function buildPrompt(question: string, analyzePath: string): string {
 
 USER QUESTION: "${question}"
 
-DATABASE: /db/db.sqlite (SQLite, read-only)
+DATABASE: ./db.sqlite (SQLite, read-only, in current working directory)
 - readings (ts INTEGER ms, sensor_id INTEGER, value REAL)
 - readings_aggregated (minute_ts, sensor_id, avg_value, min_value, max_value, sample_count)  
 - sensors (id, name, display_name, unit)
@@ -66,7 +67,7 @@ TASK: Write TypeScript to ${analyzePath} that outputs a SINGLE Vega-Lite JSON sp
 
 ## TECHNICAL RULES
 - Use Date.now() for timestamps (not hardcoded values)
-- Database path: /db/db.sqlite  
+- Database path: ./db.sqlite (relative to cwd)
 - Output ONLY valid Vega-Lite JSON to stdout
 - Always close db connection
 
@@ -149,7 +150,7 @@ Small, minimal charts:
 ## EXAMPLE - Current Value with Trend
 \`\`\`typescript
 import { Database } from "bun:sqlite";
-const db = new Database("/db/db.sqlite", { readonly: true });
+const db = new Database("./db.sqlite", { readonly: true });
 const now = Date.now();
 const hourAgo = now - 60 * 60 * 1000;
 
@@ -206,7 +207,7 @@ async function runInSandbox(scriptPath: string, workDir: string): Promise<{ stdo
     "--ro-bind", "/bin", "/bin",
     "--bind", workDir, "/work",
     "--ro-bind", bunDir, "/bun",
-    "--ro-bind", DB_PATH, "/db/db.sqlite",
+    "--ro-bind", DB_PATH, "/work/db.sqlite",
     "--dev-bind", "/dev", "/dev",
     "--proc", "/proc",
     "--tmpfs", "/tmp",
@@ -282,19 +283,26 @@ export async function handleAskStreamVega(req: Request): Promise<Response> {
           send("status", "Using cached script...");
           await writeFile(analyzePath, scriptContent);
         } else {
+          send("status", "Starting sandboxed Shelley...");
+          
+          // Start sandboxed Shelley with access to the air quality database
+          const sandbox = await getSandboxedShelley(DB_PATH);
+          setShelleyAPI(getSandboxedShelleyAPI());
+          
           send("status", "Calling Shelley to generate analysis...");
           
-          const prompt = buildPrompt(actualQuery || query!, analyzePath);
-          const cwd = tempDir;
+          const prompt = buildPrompt(actualQuery || query!, "/work/analyze.ts");
+          // Use /work as cwd - that's where the sandboxed Shelley operates
+          const cwd = "/work";
           
-          // Create conversation via Shelley API
+          // Create conversation via sandboxed Shelley API
           const conversationId = await createConversation(prompt, cwd, "claude-sonnet-4.5");
           send("shelley_started", { conversationId });
           
           // Stream progress
           for await (const event of streamConversation(conversationId, 180000)) {
             if (event.type === "tool_use") {
-              send("shelley_progress", { type: "tool", tool: event.data.tool });
+              send("shelley_progress", { type: "tool", tool: event.data.tool, input: event.data.input });
             } else if (event.type === "tool_result") {
               send("shelley_progress", { type: "tool_done", preview: event.data.preview });
             } else if (event.type === "agent_text") {
@@ -305,13 +313,16 @@ export async function handleAskStreamVega(req: Request): Promise<Response> {
             }
           }
           
-          // Check if script was created
-          const scriptExists = await Bun.file(analyzePath).exists();
+          // Check if script was created in the sandbox's work directory
+          const sandboxScriptPath = join(sandbox.workDir, "analyze.ts");
+          const scriptExists = await Bun.file(sandboxScriptPath).exists();
           if (!scriptExists) {
             throw new Error("Shelley did not create the analyze script");
           }
           
-          finalScriptContent = await Bun.file(analyzePath).text();
+          // Copy script from sandbox to our temp directory
+          finalScriptContent = await Bun.file(sandboxScriptPath).text();
+          await writeFile(analyzePath, finalScriptContent);
           send("script_created", { size: finalScriptContent.length });
         }
         

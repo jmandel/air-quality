@@ -3,7 +3,14 @@
  * Based on shelley-power-toys implementation
  */
 
-const SHELLEY_API = process.env.SHELLEY_API || 'http://localhost:9999/api';
+let SHELLEY_API = process.env.SHELLEY_API || 'http://localhost:9999/api';
+
+/**
+ * Set the Shelley API base URL (used when switching to sandboxed instance)
+ */
+export function setShelleyAPI(url: string): void {
+  SHELLEY_API = url;
+}
 const SHELLEY_HEADERS = {
   'Content-Type': 'application/json',
   'X-Shelley-Request': '1',
@@ -124,19 +131,39 @@ export async function waitForCompletion(
  * Stream conversation progress via SSE
  */
 /**
+ * Content types from Shelley's llm package
+ */
+const ContentType = {
+  Text: 0,
+  Thinking: 1, 
+  RedactedThinking: 2,
+  ToolUse: 3,
+  ToolResult: 4,
+  // Extended types
+  ToolUseExt: 5,
+  ToolResultExt: 6,
+};
+
+/**
  * Parse message content from llm_data
  */
-function parseMessageContent(msg: ShelleyMessage): { texts: string[]; tools: { name: string; input?: string }[] } {
-  const result = { texts: [] as string[], tools: [] as { name: string; input?: string }[] };
+function parseMessageContent(msg: ShelleyMessage): { texts: string[]; tools: { name: string; input?: any }[] } {
+  const result = { texts: [] as string[], tools: [] as { name: string; input?: any }[] };
   if (!msg.llm_data) return result;
   
   try {
     const data = JSON.parse(msg.llm_data);
     for (const content of data.Content || []) {
-      if (content.Type === 0 && content.Text) {
+      // Text content
+      if ((content.Type === ContentType.Text || content.Type === 2) && content.Text) {
         result.texts.push(content.Text);
-      } else if (content.Type === 3 && content.ToolName) {
-        result.tools.push({ name: content.ToolName, input: content.ToolInput });
+      }
+      // Tool use - check both Type 3 and Type 5
+      if ((content.Type === ContentType.ToolUse || content.Type === ContentType.ToolUseExt) && content.ToolName) {
+        result.tools.push({ 
+          name: content.ToolName, 
+          input: content.ToolInput 
+        });
       }
     }
   } catch {}
@@ -144,19 +171,22 @@ function parseMessageContent(msg: ShelleyMessage): { texts: string[]; tools: { n
 }
 
 /**
- * Parse tool result content
+ * Parse tool result content  
  */
 function parseToolResult(msg: ShelleyMessage): string | null {
   if (!msg.llm_data) return null;
   try {
     const data = JSON.parse(msg.llm_data);
-    // Tool results have Content array with tool_result type
     for (const content of data.Content || []) {
-      if (content.ToolResult) {
-        // Get first text from tool result
+      // Tool result - check Type 4 and Type 6
+      if (content.ToolResult && Array.isArray(content.ToolResult)) {
         for (const r of content.ToolResult) {
-          if (r.Type === 0 && r.Text) {
-            return r.Text.substring(0, 150) + (r.Text.length > 150 ? '...' : '');
+          if ((r.Type === ContentType.Text || r.Type === 2) && r.Text) {
+            const text = r.Text.trim();
+            if (text.length > 100) {
+              return text.substring(0, 100) + '...';
+            }
+            return text;
           }
         }
       }
@@ -183,19 +213,34 @@ export async function* streamConversation(
       if (msg.type === 'agent') {
         const parsed = parseMessageContent(msg);
         
-        // Report tool uses
+        // Report tool uses with input preview
         for (const tool of parsed.tools) {
-          yield { type: 'tool_use', data: { tool: tool.name } };
+          let inputPreview = '';
+          if (tool.input) {
+            if (typeof tool.input === 'string') {
+              inputPreview = tool.input.substring(0, 60);
+            } else if (tool.input.command) {
+              inputPreview = tool.input.command.substring(0, 60);
+            } else if (tool.input.path) {
+              inputPreview = tool.input.path;
+            }
+          }
+          yield { type: 'tool_use', data: { tool: tool.name, input: inputPreview } };
         }
         
         // Report text (thinking/response)
         for (const text of parsed.texts) {
-          const preview = text.substring(0, 120).replace(/\n/g, ' ');
-          yield { type: 'agent_text', data: { text: preview + (text.length > 120 ? '...' : '') } };
+          const preview = text.substring(0, 150).replace(/\n/g, ' ').trim();
+          if (preview) {
+            yield { type: 'agent_text', data: { text: preview + (text.length > 150 ? '...' : '') } };
+          }
         }
-      } else if (msg.type === 'tool') {
+      } else if (msg.type === 'tool' || msg.type === 'user') {
+        // Tool results come back as 'user' type messages
         const result = parseToolResult(msg);
-        yield { type: 'tool_result', data: { preview: result } };
+        if (result) {
+          yield { type: 'tool_result', data: { preview: result } };
+        }
       }
     }
     lastMessageCount = messages.length;
@@ -210,7 +255,7 @@ export async function* streamConversation(
       }
     }
     
-    await new Promise(resolve => setTimeout(resolve, 800));
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
   
   throw new Error('Timeout waiting for Shelley response');

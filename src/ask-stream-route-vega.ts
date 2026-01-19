@@ -201,25 +201,39 @@ async function runInSandbox(scriptPath: string, workDir: string): Promise<{ stdo
   const bunDir = process.env.HOME + "/.bun";
   
   const bwrapArgs = [
+    // System binaries and libraries (read-only)
     "--ro-bind", "/usr", "/usr",
     "--ro-bind", "/lib", "/lib",
     "--ro-bind", "/lib64", "/lib64",
     "--ro-bind", "/bin", "/bin",
-    "--bind", workDir, "/work",
+    
+    // Bun runtime (read-only)
     "--ro-bind", bunDir, "/bun",
+    
+    // Work directory with script (read-write)
+    "--bind", workDir, "/work",
+    
+    // Air quality database (read-only) - MUST come after work bind
     "--ro-bind", DB_PATH, "/work/db.sqlite",
-    "--dev-bind", "/dev", "/dev",
+    
+    // System mounts
+    "--dev", "/dev",
     "--proc", "/proc",
     "--tmpfs", "/tmp",
+    
+    // Sandbox options - no network access for script execution
     "--unshare-net",
     "--die-with-parent",
     "--chdir", "/work",
+    
+    // Environment variables
+    "--setenv", "PATH", "/bun/bin:/usr/bin:/bin",
+    "--setenv", "HOME", "/tmp",
   ];
   
   const proc = spawn(["bwrap", ...bwrapArgs, "/bun/bin/bun", "/work/analyze.ts"], {
     stdout: "pipe",
     stderr: "pipe",
-    env: { PATH: "/bun/bin:/usr/bin:/bin", HOME: "/tmp" }
   });
   
   const [stdout, stderr, exitCode] = await Promise.all([

@@ -19,6 +19,7 @@ import { join } from "path";
 
 const SHELLEY_BIN = "/usr/local/bin/shelley";
 const SHELLEY_CONFIG = "/exe.dev/shelley.json";
+const BUN_DIR = process.env.HOME + "/.bun";
 
 // Port range for sandboxed Shelley instances
 const MIN_PORT = 9900;
@@ -83,6 +84,9 @@ function buildBwrapArgs(
     "--ro-bind", SHELLEY_CONFIG, "/exe.dev/shelley.json",
     "--ro-bind", SHELLEY_BIN, SHELLEY_BIN,
     
+    // Bun runtime (read-only) - needed for script execution
+    "--ro-bind", BUN_DIR, "/bun",
+    
     // Sandbox directory (read-write for shelley.db)
     "--bind", sandboxDir, "/sandbox",
     
@@ -100,6 +104,10 @@ function buildBwrapArgs(
     // Sandbox options
     "--die-with-parent",
     "--chdir", "/work",
+    
+    // Environment variables
+    "--setenv", "PATH", "/bun/bin:/usr/local/bin:/usr/bin:/bin",
+    "--setenv", "HOME", "/tmp",
     
     // The command to run
     "--",

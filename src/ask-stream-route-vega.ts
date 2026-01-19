@@ -8,7 +8,7 @@ import { join } from "path";
 import { spawn } from "bun";
 import { findPreviousScript } from "./ask-history-lookup";
 import { saveToHistory } from "./ask-history";
-import { createConversation, streamConversation, extractFinalResponse, setShelleyAPI } from "./shelley-api";
+import { createConversation, streamConversation, extractFinalResponse } from "./shelley-api";
 import { startSandboxedShelley, type SandboxedShelley } from "./sandboxed-shelley";
 import vegaTypesSource from "./vega-types.ts" with { type: "text" };
 
@@ -292,8 +292,6 @@ export async function handleAskStreamVega(req: Request): Promise<Response> {
           
           // Start a fresh sandboxed Shelley for this request
           sandbox = await startSandboxedShelley(DB_PATH);
-          setShelleyAPI(sandbox.apiUrl);
-          
           send("status", "Calling Shelley to generate analysis...");
           
           const prompt = buildPrompt(actualQuery || query!, "/work/analyze.ts");
@@ -301,11 +299,11 @@ export async function handleAskStreamVega(req: Request): Promise<Response> {
           const cwd = "/work";
           
           // Create conversation via sandboxed Shelley API
-          const conversationId = await createConversation(prompt, cwd, "claude-sonnet-4.5");
+          const conversationId = await createConversation(sandbox.apiUrl, prompt, cwd, "claude-sonnet-4.5");
           send("shelley_started", { conversationId, port: sandbox.port });
           
           // Stream progress
-          for await (const event of streamConversation(conversationId, 180000)) {
+          for await (const event of streamConversation(sandbox.apiUrl, conversationId, 180000)) {
             if (event.type === "tool_use") {
               send("shelley_progress", { type: "tool", tool: event.data.tool, input: event.data.input });
             } else if (event.type === "tool_result") {

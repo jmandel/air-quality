@@ -283,7 +283,10 @@ export async function handleAskStreamVega(req: Request): Promise<Response> {
         
         if (useCachedScript && scriptContent) {
           send("status", "Using cached script...");
-          await writeFile(analyzePath, scriptContent);
+          // Fix DB path for sandbox - old scripts may have /db/db.sqlite
+          const fixedScript = scriptContent.replace(/"\/db\/db\.sqlite"/g, '"./db.sqlite"');
+          await writeFile(analyzePath, fixedScript);
+          finalScriptContent = fixedScript;
         } else {
           send("status", "Starting sandboxed Shelley...");
           

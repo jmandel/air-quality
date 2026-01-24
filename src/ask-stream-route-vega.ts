@@ -92,11 +92,14 @@ TASK: Write TypeScript to ${analyzePath} that outputs a SINGLE Vega-Lite JSON sp
 - RULE: Threshold lines (layer these over main chart)
 - TEXT: Big number displays, annotations
 
-### Color Coding (use consistently)
+### Color Scheme (DARK BACKGROUND - use light colors!)
+The UI has a dark background. Use bright, visible colors:
 - Good/Normal: #22c55e (green)
 - Warning: #f59e0b (amber)  
 - Critical/Bad: #ef4444 (red)
 - Neutral/Info: #3b82f6 (blue)
+- Text/labels: #e5e5e5 (light gray) or white
+- Avoid black (#000) or dark grays for text/lines - they won't be visible!
 - Use color to encode status, not just decoration
 
 ### Threshold Lines (very useful for air quality!)
